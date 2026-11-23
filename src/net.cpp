@@ -4,6 +4,77 @@
 #include <ESPmDNS.h>
 
 static bool apActive = false;
+static volatile uint8_t lastReason = 0;
+static volatile uint16_t failCount = 0;
+
+static const char* authName(wifi_auth_mode_t a) {
+  switch (a) {
+    case WIFI_AUTH_OPEN: return "open";
+    case WIFI_AUTH_WEP: return "WEP";
+    case WIFI_AUTH_WPA_PSK: return "WPA";
+    case WIFI_AUTH_WPA2_PSK: return "WPA2";
+    case WIFI_AUTH_WPA_WPA2_PSK: return "WPA/WPA2";
+    case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2-Enterprise";
+    case WIFI_AUTH_WPA3_PSK: return "WPA3";
+    case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/WPA3";
+    default: return "?";
+  }
+}
+
+// Logs what the radio actually sees for the configured SSID.
+static void diagScan() {
+  int n = WiFi.scanNetworks(false, true);
+  int found = 0;
+  for (int i = 0; i < n; i++) {
+    if (WiFi.SSID(i) != cfg.ssid) continue;
+    found++;
+    Serial.printf("[net] seen '%s' %s ch%d %ddBm %s\n", cfg.ssid, WiFi.BSSIDstr(i).c_str(),
+                  WiFi.channel(i), WiFi.RSSI(i), authName(WiFi.encryptionType(i)));
+  }
+  if (!found) {
+    Serial.printf("[net] '%s' NOT visible (%d networks around). 5 GHz-only network? Name typo?\n",
+                  cfg.ssid, n);
+    for (int i = 0; i < n && i < 15; i++)
+      Serial.printf("[net]   '%s' ch%d %ddBm\n", WiFi.SSID(i).c_str(), WiFi.channel(i), WiFi.RSSI(i));
+  }
+  WiFi.scanDelete();
+}
+
+static void onWifiEvent(arduino_event_id_t ev, arduino_event_info_t info) {
+  if (ev == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    uint8_t r = info.wifi_sta_disconnected.reason;
+    failCount++;
+    if (r != lastReason || failCount % 10 == 1)
+      Serial.printf("[net] STA disconnected, reason %u (%s), attempt %u\n", r,
+                    WiFi.disconnectReasonName((wifi_err_reason_t)r), failCount);
+    lastReason = r;
+  } else if (ev == ARDUINO_EVENT_WIFI_STA_CONNECTED) {
+    Serial.println("[net] STA associated, waiting for DHCP");
+  }
+}
+
+uint8_t netLastReason() { return lastReason; }
+
+// Human readable reason why the STA link is down ("" if connected / nothing to report).
+const char* netStaProblem(bool shortText) {
+  if (!cfg.ssid[0] || WiFi.status() == WL_CONNECTED) return "";
+  switch (lastReason) {
+    case 0: return "";
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_MIC_FAILURE:
+      return shortText ? "Wrong password?" : "Роутер не принимает пароль — проверьте пароль Wi-Fi";
+    case WIFI_REASON_NO_AP_FOUND:
+      return shortText ? "Network not found" : "Сеть не найдена (опечатка в имени или сеть только 5 ГГц)";
+    case WIFI_REASON_AUTH_EXPIRE:
+    case WIFI_REASON_ASSOC_EXPIRE:
+    case WIFI_REASON_BEACON_TIMEOUT:
+      return shortText ? "Weak signal?" : "Нет ответа от роутера — слабый сигнал?";
+    default:
+      return shortText ? "Connect failed" : "Ошибка подключения";
+  }
+}
 static bool apForced = false;
 static uint32_t lostSince = 0, connectedSince = 0;
 
@@ -45,9 +116,11 @@ void netBegin(bool forceAp) {
   } else {
     WiFi.mode(WIFI_STA);
   }
+  WiFi.onEvent(onWifiEvent);
   if (cfg.ssid[0]) {
+    diagScan();
     WiFi.begin(cfg.ssid, cfg.pass);
-    Serial.printf("[net] connecting to %s\n", cfg.ssid);
+    Serial.printf("[net] connecting to '%s' (password %u chars)\n", cfg.ssid, strlen(cfg.pass));
   }
   lostSince = millis();
 

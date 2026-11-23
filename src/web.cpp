@@ -91,6 +91,8 @@ static void handleGetConfig() {
   i["apSsid"] = netApSsid();
   i["apActive"] = netApActive();
   i["staConnected"] = netStaConnected();
+  i["staReason"] = netLastReason();
+  i["staProblem"] = netStaProblem(false);
   i["lcdAddr"] = uiLcdAddr();
   i["bmpAddr"] = sens.bmpAddr;
   i["freeHeap"] = ESP.getFreeHeap();
@@ -162,6 +164,27 @@ static void handleScanWifi() {
   sendJson(d);
 }
 
+static void handleDisplay() {
+  JsonDocument d;
+  uiScreenToJson(d.to<JsonObject>());
+  sendJson(d);
+}
+
+// POST /api/display/input {"turn":1} | {"turn":-1} | {"press":"click"} | {"press":"long"}
+static void handleDisplayInput() {
+  JsonDocument body;
+  if (!parseBody(body)) return;
+  const char* p = body["press"] | "";
+  int press = strcmp(p, "click") == 0 ? 1 : strcmp(p, "long") == 0 ? 2 : 0;
+  int turn = body["turn"] | 0;
+  if (!turn && !press) return sendError(400, "turn or press required");
+  uiVirtualInput(turn, press);
+  uiLoop();  // process immediately so the response reflects the new screen
+  JsonDocument d;
+  uiScreenToJson(d.to<JsonObject>());
+  sendJson(d);
+}
+
 static void handleReboot() {
   JsonDocument d;
   d["ok"] = true;
@@ -215,6 +238,8 @@ void webBegin() {
   server.on("/api/scan/onewire", HTTP_GET, handleScanOneWire);
   server.on("/api/scan/i2c", HTTP_GET, handleScanI2c);
   server.on("/api/scan/wifi", HTTP_GET, handleScanWifi);
+  server.on("/api/display", HTTP_GET, handleDisplay);
+  server.on("/api/display/input", HTTP_POST, handleDisplayInput);
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/factory-reset", HTTP_POST, handleFactoryReset);
   server.on("/update", HTTP_POST, handleOtaDone, handleOtaUpload);

@@ -48,13 +48,44 @@ static uint8_t detectLcd() {
 
 uint8_t uiLcdAddr() { return lcdAddr; }
 
+// ---- web mirror / virtual encoder -------------------------------------------
+
+static int virtDelta = 0;
+static BtnEvent virtBtn = BtnEvent::None;
+
+void uiVirtualInput(int turn, int press) {
+  virtDelta += constrain(turn, -10, 10);
+  if (press == 1) virtBtn = BtnEvent::Click;
+  else if (press == 2) virtBtn = BtnEvent::Long;
+}
+
+void uiScreenToJson(JsonObject o) {
+  o["cols"] = cfg.lcdCols;
+  o["rows"] = cfg.lcdRows;
+  o["present"] = lcd != nullptr;
+  JsonArray lines = o["lines"].to<JsonArray>();
+  for (int r = 0; r < cfg.lcdRows && r < 4; r++) {
+    String line;
+    for (int c = 0; c < cfg.lcdCols && c < 40; c++) {
+      char ch = shown[r][c];
+      if (!ch) ch = ' ';
+      if ((uint8_t)ch == 0xDF) line += "\u00B0";  // HD44780 degree sign -> UTF-8 °
+      else if ((uint8_t)ch < 0x20 || (uint8_t)ch > 0x7E) line += '?';
+      else line += ch;
+    }
+    lines.add(line);
+  }
+}
+
 static bool big() { return cfg.lcdRows >= 4; }
 
 static uint8_t frameRows = 0;  // rows written during the current frame
 static bool frameDemo = false;  // put demo marker 'D' into the last column of row 0
 
 static void putLine(int row, const char* text) {
-  if (!lcd || row >= cfg.lcdRows || row >= 4) return;
+  // The frame is always rendered into `shown` (used by the web display mirror),
+  // the physical LCD is only touched if present.
+  if (row >= cfg.lcdRows || row >= 4) return;
   frameRows |= 1 << row;
   char buf[41];
   int cols = min<int>(cfg.lcdCols, 40);
@@ -64,6 +95,7 @@ static void putLine(int row, const char* text) {
   if (row == 0 && frameDemo) buf[cols - 1] = 'D';
   if (strcmp(buf, shown[row]) == 0) return;  // avoid flicker
   strcpy(shown[row], buf);
+  if (!lcd) return;
   lcd->setCursor(0, row);
   lcd->print(buf);
 }
@@ -257,7 +289,9 @@ static void drawPageNet() {
       fit(l, sizeof(l), "Open ", WiFi.softAPIP().toString().c_str());
       putLine(2, l);
       if (cfg.ssid[0]) {
-        fit(l, sizeof(l), "Retry ", cfg.ssid);
+        const char* p = netStaProblem(true);
+        if (*p) snprintf(l, sizeof(l), "%s", p);
+        else fit(l, sizeof(l), "Retry ", cfg.ssid);
         putLine(3, l);
       }
     } else {
@@ -271,6 +305,7 @@ static void drawPageNet() {
   } else {
     putLine(0, "WiFi connecting");
     putLine(1, cfg.ssid);
+    if (big()) putLine(2, netStaProblem(true));
   }
 }
 
@@ -334,7 +369,7 @@ static void drawEdit() {
 }
 
 static void draw() {
-  if (!lcd || millis() < msgUntil) return;
+  if (millis() < msgUntil) return;
   frameBegin();
   switch (mode) {
     case Mode::View:
@@ -374,8 +409,11 @@ void uiLoop() {
     if (mode == Mode::View) page = pageCount() - 1;  // network page is always last
   }
   uint32_t now = millis();
-  int d = encoderDelta();
+  int d = encoderDelta() + virtDelta;
   BtnEvent b = encoderButton();
+  if (b == BtnEvent::None) b = virtBtn;
+  virtDelta = 0;
+  virtBtn = BtnEvent::None;
 
   if (d || b != BtnEvent::None) {
     lastInput = now;

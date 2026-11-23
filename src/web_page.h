@@ -35,6 +35,14 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 .sw i:after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
 .sw input:checked+i{background:#f59e0b}.sw input:checked+i:after{left:21px}
 .badge{display:inline-block;background:#f59e0b;color:#000;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;vertical-align:middle;margin-left:6px}
+.lcdwrap{display:flex;flex-wrap:wrap;align-items:center;gap:16px}
+.lcd{background:#1442c4;padding:12px 14px;border-radius:6px;border:8px solid #15171c;box-shadow:inset 0 0 14px #000a;max-width:100%;overflow-x:auto}
+.lcd div{font:min(22px,4.3vw)/1.3 "Courier New",Consolas,monospace;font-weight:600;color:#e4ecff;white-space:pre;letter-spacing:.12em;text-shadow:0 0 5px #a8c4ff99}
+.lcd.off{background:#2b3550}.lcd.off div{color:#8a94b0;text-shadow:none}
+.enc{display:grid;grid-template-columns:repeat(3,auto);gap:6px}
+.enc button{border:1px solid var(--bd);background:var(--bg);color:var(--fg);border-radius:10px;padding:10px 14px;font:inherit;font-size:18px;cursor:pointer;min-width:52px}
+.enc button:active{background:var(--acc);color:#fff}
+.enc .wide{grid-column:span 3;font-size:13px}
 #demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
@@ -46,6 +54,17 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 
 <section id="t-mon">
  <div id="demoBar" class="hide">⚠ Демо-режим: показания DS18B20 эмулируются. Выключить — вкладка «Термодатчики».</div>
+ <div class="card"><h3>Дисплей <span class="mut" id="lcdInfo"></span></h3>
+  <div class="lcdwrap">
+   <div class="lcd" id="lcd"></div>
+   <div class="enc">
+    <button data-in='{"turn":-1}' title="Повернуть влево">⟲</button>
+    <button data-in='{"press":"click"}' title="Клик">●</button>
+    <button data-in='{"turn":1}' title="Повернуть вправо">⟳</button>
+    <button class="wide" data-in='{"press":"long"}'>Долгое нажатие (меню коррекции)</button>
+   </div>
+  </div>
+ </div>
  <div class="grid" id="monDs"></div>
  <div class="grid">
   <div class="card"><h3>AHT20</h3><div class="big" id="ahtT">—</div><div class="mut">влажность <span id="ahtH">—</span></div></div>
@@ -88,6 +107,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 
 <section id="t-wifi" class="hide"><div class="card">
  <h3>Wi‑Fi</h3>
+ <div id="wStat" class="mut"></div>
  <label>Сеть (SSID)</label><input id="ssid" list="ssids"><datalist id="ssids"></datalist>
  <label>Пароль</label><input id="wpass" type="password" placeholder="(не менять)">
  <label>Имя хоста (mDNS: имя.local)</label><input id="hostname">
@@ -161,6 +181,7 @@ async function loadCfg(){
   $('lcdAddr').value=C.lcd.addr?C.lcd.addr.toString(16):'0';$('lcdSize').value=C.lcd.cols+'x'+C.lcd.rows;
   $('encSteps').value=C.encoder.stepsPerDetent;$('encRev').checked=C.encoder.reverse;
   $('ssid').value=C.wifi.ssid;$('hostname').value=C.wifi.hostname;$('apName').textContent=I.apSsid;
+  $('wStat').innerHTML=I.staConnected?'<span class="ok">● Подключено к '+C.wifi.ssid+', IP '+I.ip+'</span>':(C.wifi.ssid?'<span class="bad">● Нет подключения к '+C.wifi.ssid+(I.staProblem?': '+I.staProblem:'')+'</span>':'Сеть не настроена');
   $('demo').checked=C.dsDemo;$('poll').value=C.pollMs;$('punit').value=C.pressUnit;
   ['wpass','appass'].forEach(id=>{$(id).value='';dirty.delete(id)});
   $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не найден'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не найден'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} мин`;
@@ -204,5 +225,14 @@ $('fwBtn').onclick=()=>{const f=$('fw').files[0];if(!f)return;const fd=new FormD
   const x=new XMLHttpRequest();x.open('POST','/update');x.upload.onprogress=e=>$('fwSt').textContent=Math.round(e.loaded/e.total*100)+'%';
   x.onload=()=>{if(x.status==200){$('fwSt').textContent='Готово, перезагрузка…';setTimeout(()=>location.reload(),10000)}else $('fwSt').textContent='Ошибка: '+x.responseText};x.send(fd)};
 
+function renderLcd(j){const e=$('lcd');e.innerHTML='';e.classList.toggle('off',!j.present);
+  j.lines.forEach(t=>{const d=document.createElement('div');d.textContent=t.padEnd(j.cols,' ');e.appendChild(d)});
+  $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · физический дисплей не найден, показан эмулятор')}
+let lcdBusy=false;
+async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))return;lcdBusy=true;
+  try{renderLcd(await api('/api/display'))}catch(e){}lcdBusy=false}
+document.querySelectorAll('.enc button').forEach(b=>b.onclick=async()=>{
+  try{lcdBusy=true;renderLcd(await api('/api/display/input',JSON.parse(b.dataset.in)))}catch(e){toast(e.message)}lcdBusy=false});
+pollLcd();setInterval(pollLcd,800);
 fillPins();loadCfg().catch(e=>toast(e.message));poll();setInterval(poll,2000);
 </script></body></html>)HTML";
