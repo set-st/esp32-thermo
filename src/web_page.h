@@ -30,6 +30,12 @@ th{font-size:12px;color:var(--mut);font-weight:500}
 code{background:var(--bg);padding:1px 5px;border-radius:4px}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:8px;display:none}
 .hide{display:none}
+.sw{display:flex;align-items:center;gap:10px;cursor:pointer;margin:0 0 12px;color:var(--fg);font-size:15px}
+.sw input{display:none}.sw i{width:42px;height:24px;border-radius:12px;background:var(--bd);position:relative;transition:.2s;flex:none}
+.sw i:after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.sw input:checked+i{background:#f59e0b}.sw input:checked+i:after{left:21px}
+.badge{display:inline-block;background:#f59e0b;color:#000;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;vertical-align:middle;margin-left:6px}
+#demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
 <nav id="nav">
@@ -39,6 +45,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 <main>
 
 <section id="t-mon">
+ <div id="demoBar" class="hide">⚠ Демо-режим: показания DS18B20 эмулируются. Выключить — вкладка «Термодатчики».</div>
  <div class="grid" id="monDs"></div>
  <div class="grid">
   <div class="card"><h3>AHT20</h3><div class="big" id="ahtT">—</div><div class="mut">влажность <span id="ahtH">—</span></div></div>
@@ -49,6 +56,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 
 <section id="t-ds" class="hide"><div class="card">
  <h3>Датчики DS18B20</h3>
+ <label class="sw"><input type="checkbox" id="demo"><i></i>Демо-режим (эмуляция 4 датчиков, пока реальные не подключены)</label>
  <table><thead><tr><th>#</th><th>Имя</th><th>Адрес на шине</th><th>Коррекция, °C</th><th>Сырое → итог</th></tr></thead><tbody id="dsTbl"></tbody></table>
  <button class="btn sec" id="owScan">Сканировать шину</button><button class="btn" id="dsSave">Сохранить</button>
  <div class="mut" id="owRes"></div>
@@ -153,15 +161,15 @@ async function loadCfg(){
   $('lcdAddr').value=C.lcd.addr?C.lcd.addr.toString(16):'0';$('lcdSize').value=C.lcd.cols+'x'+C.lcd.rows;
   $('encSteps').value=C.encoder.stepsPerDetent;$('encRev').checked=C.encoder.reverse;
   $('ssid').value=C.wifi.ssid;$('hostname').value=C.wifi.hostname;$('apName').textContent=I.apSsid;
-  $('poll').value=C.pollMs;$('punit').value=C.pressUnit;
+  $('demo').checked=C.dsDemo;$('poll').value=C.pollMs;$('punit').value=C.pressUnit;
   ['wpass','appass'].forEach(id=>{$(id).value='';dirty.delete(id)});
   $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не найден'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не найден'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} мин`;
 }
 
 async function poll(){
   try{S=await api('/api/sensors');
-    let h='';S.ds18b20.forEach(d=>h+=`<div class="card"><h3>${d.name}</h3><div class="big ${d.ok?'':'bad'}">${d.ok?f1(d.temp)+' °C':'нет связи'}</div><div class="mut">${d.addr||'слот пуст'}${d.offset?` · корр. ${d.offset>0?'+':''}${d.offset}`:''}</div></div>`);
-    $('monDs').innerHTML=h;
+    let h='';S.ds18b20.forEach(d=>h+=`<div class="card"><h3>${d.name}${d.demo?'<span class="badge">ДЕМО</span>':''}</h3><div class="big ${d.ok?'':'bad'}">${d.ok?f1(d.temp)+' °C':'нет связи'}</div><div class="mut">${d.demo?'эмуляция':(d.addr||'слот пуст')}${d.offset?` · корр. ${d.offset>0?'+':''}${d.offset}`:''}</div></div>`);
+    $('monDs').innerHTML=h;$('demoBar').classList.toggle('hide',!S.demo);
     const a=S.aht20,b=S.bmp280;
     $('ahtT').textContent=a.ok?f1(a.temp)+' °C':'нет данных';$('ahtH').textContent=a.ok?f1(a.humidity)+' %':'—';
     $('bmpP').textContent=b.ok?f1(b.pressure_mmhg)+' мм':'нет данных';$('bmpHpa').textContent=b.ok?f1(b.pressure_hpa)+' гПа':'—';$('bmpT').textContent=b.ok?f1(b.temp)+' °C':'—';
@@ -169,6 +177,7 @@ async function poll(){
     updDsLive();
   }catch(e){$('st').textContent='нет связи с устройством'}}
 
+$('demo').onchange=e=>save({dsDemo:e.target.checked},e.target.checked?'Демо-режим включён':'Демо-режим выключен');
 $('owScan').onclick=async()=>{try{owFound=(await api('/api/scan/onewire')).found;
   $('owRes').textContent=owFound.length?'Найдено: '+owFound.map(x=>x.addr+(x.slot?` (T${x.slot})`:' (не назначен)')).join(', '):'Датчики не найдены';renderDs()}catch(e){toast(e.message)}};
 $('dsSave').onclick=()=>{

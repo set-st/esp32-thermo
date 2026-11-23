@@ -66,6 +66,7 @@ static void handleMetrics() {
     String l = "slot=\"" + String(i + 1) + "\",name=\"" + cfg.ds[i].name + "\"";
     metricLine(m, "thermohub_ds18b20_celsius", l, dsTemp(i));
   }
+  metricLine(m, "thermohub_ds18b20_demo", "", cfg.dsDemo ? 1 : 0);
   if (sens.ahtOk) {
     metricLine(m, "thermohub_aht20_celsius", "", sens.ahtTemp);
     metricLine(m, "thermohub_aht20_humidity_percent", "", sens.ahtHum);

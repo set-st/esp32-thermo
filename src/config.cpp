@@ -101,6 +101,7 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
 
   o["pollMs"] = c.pollMs;
   o["pressUnit"] = c.pressUnit;
+  o["dsDemo"] = c.dsDemo;
 
   JsonArray ds = o["ds"].to<JsonArray>();
   for (int i = 0; i < DS_COUNT; i++) {
@@ -184,6 +185,7 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
 
   m.num(c.pollMs, j["pollMs"], 1000, 60000, false, "Poll interval");
   m.num(c.pressUnit, j["pressUnit"], 0, 1, false, "Pressure unit");
+  m.flag(c.dsDemo, j["dsDemo"], false);
 
   JsonArrayConst ds = j["ds"];
   for (int i = 0; i < DS_COUNT && i < (int)ds.size(); i++) {

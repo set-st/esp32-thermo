@@ -51,6 +51,7 @@ uint8_t uiLcdAddr() { return lcdAddr; }
 static bool big() { return cfg.lcdRows >= 4; }
 
 static uint8_t frameRows = 0;  // rows written during the current frame
+static bool frameDemo = false;  // put demo marker 'D' into the last column of row 0
 
 static void putLine(int row, const char* text) {
   if (!lcd || row >= cfg.lcdRows || row >= 4) return;
@@ -60,13 +61,17 @@ static void putLine(int row, const char* text) {
   int n = strlen(text);
   for (int i = 0; i < cols; i++) buf[i] = i < n ? text[i] : ' ';
   buf[cols] = 0;
+  if (row == 0 && frameDemo) buf[cols - 1] = 'D';
   if (strcmp(buf, shown[row]) == 0) return;  // avoid flicker
   strcpy(shown[row], buf);
   lcd->setCursor(0, row);
   lcd->print(buf);
 }
 
-static void frameBegin() { frameRows = 0; }
+static void frameBegin() {
+  frameRows = 0;
+  frameDemo = false;
+}
 static void frameEnd() {
   for (int r = 0; r < cfg.lcdRows && r < 4; r++)
     if (!(frameRows & (1 << r))) putLine(r, "");
@@ -292,9 +297,9 @@ static void draw() {
   switch (mode) {
     case Mode::View:
       switch (pageAt(page)) {
-        case Page::Ds: drawPageDs(); break;
+        case Page::Ds: frameDemo = cfg.dsDemo; drawPageDs(); break;
         case Page::I2c: drawPageI2c(); break;
-        case Page::Overview: drawPageOverview(); break;
+        case Page::Overview: frameDemo = cfg.dsDemo; drawPageOverview(); break;
         case Page::Net: drawPageNet(); break;
       }
       break;

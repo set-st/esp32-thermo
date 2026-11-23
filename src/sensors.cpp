@@ -135,7 +135,25 @@ static void readI2c() {
   }
 }
 
+// Demo mode: plausible, slowly drifting values for all 4 slots
+// (different base temperature per slot, quantised to the real 1/16 °C step).
+static void readDsDemo() {
+  static const float base[DS_COUNT] = {21.5f, 45.0f, 62.0f, 4.5f};
+  static const float period[DS_COUNT] = {300.0f, 420.0f, 540.0f, 660.0f};  // seconds
+  float t = millis() / 1000.0f;
+  for (int i = 0; i < DS_COUNT; i++) {
+    float v = base[i] + 1.5f * sinf(2 * PI * t / period[i]) + random(-8, 9) / 100.0f;
+    sens.ds[i] = {true, roundf(v * 16) / 16.0f, 0};
+  }
+}
+
 static void readDs() {
+  static bool wasDemo = false;
+  if (wasDemo != cfg.dsDemo) {  // mode switched: drop stale readings
+    wasDemo = cfg.dsDemo;
+    for (int i = 0; i < DS_COUNT; i++) sens.ds[i] = {false, NAN, 0};
+  }
+  if (cfg.dsDemo) return readDsDemo();
   for (int i = 0; i < DS_COUNT; i++) {
     DsReading& r = sens.ds[i];
     DeviceAddress a;
@@ -204,10 +222,12 @@ void sensorsScanI2c(JsonArray arr) {
 static double r2(float v) { return roundf(v * 100) / 100.0; }
 
 void sensorsToJson(JsonObject o) {
+  o["demo"] = cfg.dsDemo;
   JsonArray ds = o["ds18b20"].to<JsonArray>();
   for (int i = 0; i < DS_COUNT; i++) {
     JsonObject s = ds.add<JsonObject>();
     s["slot"] = i + 1;
+    s["demo"] = cfg.dsDemo;
     s["name"] = cfg.ds[i].name;
     s["addr"] = cfg.ds[i].addr;
     s["ok"] = sens.ds[i].ok;

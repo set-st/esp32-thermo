@@ -33,6 +33,7 @@ struct Config {
   // Misc
   uint16_t pollMs;
   uint8_t pressUnit;  // 0 = hPa, 1 = mmHg (LCD only)
+  bool dsDemo;        // emulate the 4 DS18B20 (no real sensors needed)
   DsSlot ds[DS_COUNT];
 };
 
