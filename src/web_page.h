@@ -273,7 +273,6 @@ $('i2cScan').onclick=async()=>{try{const r=await api('/api/scan/i2c'),f=r.found;
   const extra=(r.found10k||[]).filter(a=>!f.includes(a));if(extra.length)t+=' · лише на 10 кГц: '+extra.map(hx).join(', ')+' — перевірте довжину проводів і підтяжки';
   t+=` · AHT20: ${r.aht20?'OK':'немає'}, BMP280: ${r.bmp280?'OK':'немає'}`;
   $('i2cRes').textContent=t}catch(e){toast(e.message)}};
-  $('i2cRes').textContent=f.length?'Знайдено: '+f.map(a=>'0x'+a.toString(16)+(n[a]?` (${n[a]})`:'')).join(', '):'Нічого не знайдено'}catch(e){toast(e.message)}};
 $('pinsSave').onclick=()=>{
   const pins={};['sda','scl','onewire','encA','encB','encBtn'].forEach(k=>pins[k]=parseInt($('p_'+k).value));
   const [cols,rows]=$('lcdSize').value.split('x').map(Number);const addr=parseInt($('lcdAddr').value||'0',16);
