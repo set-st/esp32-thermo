@@ -573,3 +573,21 @@ void uiLoop() {
     draw();
   }
 }
+
+// Character ROM test: rows of 16 raw codes with a hex label ("A0 ................").
+// page 0: 0xA0..0xDF, page 1: 0xE0..0xFF + 0x80..0x9F. Shown for 30 s.
+void uiCharsetTest(int page) {
+  const uint8_t starts[2][4] = {{0xA0, 0xB0, 0xC0, 0xD0}, {0xE0, 0xF0, 0x80, 0x90}};
+  page = constrain(page, 0, 1);
+  frameBegin();
+  for (int r = 0; r < 4 && r < cfg.lcdRows; r++) {
+    char l[41];
+    uint8_t st = starts[page][r];
+    int n = snprintf(l, sizeof(l), "%02X ", st);
+    for (int k = 0; k < 16 && n < 40; k++) l[n++] = (char)(st + k);
+    l[n] = 0;
+    putLine(r, l);
+  }
+  frameEnd();
+  msgUntil = millis() + 30000;
+}

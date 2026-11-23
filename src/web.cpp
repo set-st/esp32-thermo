@@ -178,6 +178,16 @@ static void handleDisplayInput() {
   sendJson(d);
 }
 
+// POST /api/display/charset {"page":0|1} — character ROM test on the physical LCD
+static void handleCharset() {
+  JsonDocument body;
+  if (!parseBody(body)) return;
+  uiCharsetTest(body["page"] | 0);
+  JsonDocument d;
+  d["ok"] = true;
+  sendJson(d);
+}
+
 static void handleReboot() {
   JsonDocument d;
   d["ok"] = true;
@@ -233,6 +243,7 @@ void webBegin() {
   server.on("/api/scan/wifi", HTTP_GET, handleScanWifi);
   server.on("/api/display", HTTP_GET, handleDisplay);
   server.on("/api/display/input", HTTP_POST, handleDisplayInput);
+  server.on("/api/display/charset", HTTP_POST, handleCharset);
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/factory-reset", HTTP_POST, handleFactoryReset);
   server.on("/update", HTTP_POST, handleOtaDone, handleOtaUpload);
