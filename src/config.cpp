@@ -21,9 +21,9 @@ void configDefaults(Config& c) {
   c.pinSda = 21;
   c.pinScl = 22;
   c.pinOneWire = 4;
-  c.pinEncA = 32;
-  c.pinEncB = 33;
-  c.pinEncBtn = 25;
+  c.pinEncA = 32;    // CLK
+  c.pinEncB = 35;    // DT  (input-only, no internal pull-up: module pull-ups, + to 3.3 V)
+  c.pinEncBtn = 33;  // SW
   c.lcdAddr = 0;
   c.lcdCols = 20;
   c.lcdRows = 4;
