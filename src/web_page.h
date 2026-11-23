@@ -286,7 +286,7 @@ function drawLcd(cv,lines,cols,rows,on){
 let lastLcd=null;
 function renderLcd(j){lastLcd=j;const cv=$('lcd');cv.parentElement.style.background=j.present?'#1a44c8':'#2b3550';
   const bl=j.backlight!==false;cv.parentElement.style.background=bl?'#1a44c8':'#0d1d55';drawLcd(cv,j.lines,j.cols,j.rows,bl);
-  $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · фізичний дисплей не знайдено, показано емулятор')+(bl?'':' · підсвітка вимкнена')}
+  $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · фізичний дисплей не знайдено, показано емулятор')+(bl?(j.blOffIn!=null?` · підсвітка вимкнеться через ${Math.floor(j.blOffIn/60)}:${String(j.blOffIn%60).padStart(2,'0')}`:''):' · підсвітка вимкнена')}
 window.addEventListener('resize',()=>lastLcd&&renderLcd(lastLcd));
 let lcdBusy=false;
 async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))return;lcdBusy=true;

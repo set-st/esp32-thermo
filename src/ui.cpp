@@ -224,6 +224,11 @@ void uiScreenToJson(JsonObject o) {
   o["rows"] = cfg.lcdRows;
   o["present"] = lcd != nullptr;
   o["backlight"] = blOn;
+  o["blMode"] = cfg.lcdBlMode;
+  if (cfg.lcdBlMode == 1 && blOn) {  // seconds until auto-off
+    uint32_t total = (uint32_t)cfg.lcdBlTimeout * 1000UL, idle = millis() - lastActivity;
+    o["blOffIn"] = idle >= total ? 0 : (total - idle + 999) / 1000;
+  }
   JsonArray lines = o["lines"].to<JsonArray>();
   for (int r = 0; r < cfg.lcdRows && r < 4; r++) {
     String line;
