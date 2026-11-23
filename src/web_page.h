@@ -36,9 +36,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 .sw input:checked+i{background:#f59e0b}.sw input:checked+i:after{left:21px}
 .badge{display:inline-block;background:#f59e0b;color:#000;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;vertical-align:middle;margin-left:6px}
 .lcdwrap{display:flex;flex-wrap:wrap;align-items:center;gap:16px}
-.lcd{background:#1442c4;padding:12px 14px;border-radius:6px;border:8px solid #15171c;box-shadow:inset 0 0 14px #000a;max-width:100%;overflow-x:auto}
-.lcd div{font:min(22px,4.3vw)/1.3 "Courier New",Consolas,monospace;font-weight:600;color:#e4ecff;white-space:pre;letter-spacing:.12em;text-shadow:0 0 5px #a8c4ff99}
-.lcd.off{background:#2b3550}.lcd.off div{color:#8a94b0;text-shadow:none}
+.lcd{border:8px solid #15171c;border-radius:6px;box-shadow:0 2px 6px #0004;line-height:0;max-width:100%;overflow:hidden;background:#1a44c8}
+.lcd canvas{display:block;padding:10px}
 .enc{display:grid;grid-template-columns:repeat(3,auto);gap:6px}
 .enc button{border:1px solid var(--bd);background:var(--bg);color:var(--fg);border-radius:10px;padding:10px 14px;font:inherit;font-size:18px;cursor:pointer;min-width:52px}
 .enc button:active{background:var(--acc);color:#fff}
@@ -57,8 +56,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 <section id="t-mon">
  <div id="demoBar" class="hide">⚠ Демо-режим: показания DS18B20 эмулируются. Выключить — вкладка «Термодатчики».</div>
  <div class="card"><h3>Дисплей <span class="mut" id="lcdInfo"></span></h3>
-  <div class="lcdwrap">
-   <div class="lcd" id="lcd"></div>
+  <div class="lcdwrap" id="lcdwrap">
+   <div class="lcd"><canvas id="lcd" role="img"></canvas></div>
    <div class="enc">
     <button data-in='{"turn":-1}' title="Повернуть влево">⟲</button>
     <button data-in='{"press":"click"}' title="Клик">●</button>
@@ -234,9 +233,27 @@ $('fwBtn').onclick=()=>{const f=$('fw').files[0];if(!f)return;const fd=new FormD
   const x=new XMLHttpRequest();x.open('POST','/update');x.upload.onprogress=e=>$('fwSt').textContent=Math.round(e.loaded/e.total*100)+'%';
   x.onload=()=>{if(x.status==200){$('fwSt').textContent='Готово, перезагрузка…';setTimeout(()=>location.reload(),10000)}else $('fwSt').textContent='Ошибка: '+x.responseText};x.send(fd)};
 
-function renderLcd(j){const e=$('lcd');e.innerHTML='';e.classList.toggle('off',!j.present);
-  j.lines.forEach(t=>{const d=document.createElement('div');d.textContent=t.padEnd(j.cols,' ');e.appendChild(d)});
+const FONT='000000000000005F00000007000700147F147F14242A7F2A12231308646236495522500005030000001C2241000041221C0014083E081408083E080800503000000808080808006060000020100804023E5149453E00427F400042615149462141454B311814127F1027454545393C4A49493001710905033649494936064949291E003636000000563600000814224100141414141400412214080201510906324979413E7E1111117E7F494949363E414141227F4141221C7F494949417F090901013E414151327F0808087F00417F41002040413F017F081422417F404040407F0204027F7F0408107F3E4141413E7F090909063E4151215E7F09192946464949493101017F01013F4040403F1F2040201F7F2018207F631408146303047804036151494543007F41410002040810200041417F0004020102044040404040000102040020545454787F484444383844444420384444487F3854545418087E0901020C5252523E7F0804047800447D40002040443D007F1028440000417F40007C041804787C0804047838444444387C14141408081414187C7C080404084854545420043F4440203C4040207C1C2040201C3C4030403C44281028440C5050503C4464544C44000836410000007F000000413608000804081008',DEGG='0705070000';
+function glyph(ch){const c=ch.charCodeAt(0);if(ch=='°')return DEGG;if(c<32||c>126)return FONT.substr(('?'.charCodeAt(0)-32)*10,10);return FONT.substr((c-32)*10,10)}
+// HD44780-like dot matrix: 5x8 dots per cell, 1-dot gaps, unlit dots faintly visible
+function drawLcd(cv,lines,cols,rows,on){
+  const box=cv.closest('.card').clientWidth-60, pitch=Math.max(2,Math.min(6,Math.floor(box/(cols*6+1))));
+  const W=(cols*6+1)*pitch, H=(rows*9+1)*pitch, dpr=window.devicePixelRatio||1;
+  cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px';
+  const g=cv.getContext('2d');g.scale(dpr,dpr);g.fillStyle=on?'#1a44c8':'#2b3550';g.fillRect(0,0,W,H);
+  const dot=pitch*0.86, lit=on?'#e9f0ff':'#9aa3bd', off='rgba(255,255,255,0.07)';
+  if(on){g.shadowColor='rgba(170,200,255,0.7)';}
+  for(let r=0;r<rows;r++){const t=(lines[r]||'').padEnd(cols,' ');
+    for(let c=0;c<cols;c++){const gl=glyph(t[c]);
+      for(let x=0;x<5;x++){const col=parseInt(gl.substr(x*2,2),16);
+        for(let y=0;y<8;y++){const px=(c*6+1+x)*pitch, py=(r*9+1+y)*pitch, l=y<7&&(col>>y)&1;
+          g.shadowBlur=l&&on?pitch:0;g.fillStyle=l?lit:off;g.fillRect(px,py,dot,dot)}}}}
+  cv.setAttribute('aria-label',lines.join('\n'))}
+let lastLcd=null;
+function renderLcd(j){lastLcd=j;const cv=$('lcd');cv.parentElement.style.background=j.present?'#1a44c8':'#2b3550';
+  drawLcd(cv,j.lines,j.cols,j.rows,true);
   $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · физический дисплей не найден, показан эмулятор')}
+window.addEventListener('resize',()=>lastLcd&&renderLcd(lastLcd));
 let lcdBusy=false;
 async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))return;lcdBusy=true;
   try{renderLcd(await api('/api/display'))}catch(e){}lcdBusy=false}

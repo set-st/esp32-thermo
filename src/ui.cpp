@@ -171,12 +171,6 @@ static void fmtTemp(char* out, size_t n, float t) {
   else snprintf(out, n, "%.1f", t);
 }
 
-static void fmtPress(char* out, size_t n) {
-  if (!sens.bmpOk) snprintf(out, n, "--.-");
-  else if (cfg.pressUnit == 1) snprintf(out, n, "%.1fmm", hpaToMmHg(sens.bmpPress));
-  else snprintf(out, n, "%.1fhPa", sens.bmpPress);
-}
-
 // ---- view pages ------------------------------------------------------------
 
 enum class Page { Ds, I2c, Overview, Net };
@@ -188,75 +182,98 @@ static Page pageAt(int i) {
 }
 static int pageCount() { return big() ? 4 : 3; }
 
+// Fixed-width value: "%5.1f" or a placeholder of the same width, so decimal
+// points line up in every row ("-12.3", " 22.1", " --.-").
+static void val5(char* out, size_t n, float v) {
+  if (isnan(v)) snprintf(out, n, " --.-");
+  else snprintf(out, n, "%5.1f", v);
+}
+
 static void drawPageDs() {
-  char l[41], a[8], b[8];
+  char l[41], a[12], b[12];
   if (big()) {
-    // "1 Name         23.4°C" — one sensor per line, name truncated to fit
-    int nameW = max(0, (int)cfg.lcdCols - 2 - 7);
+    // "1 Name      22.1°C D" — name column, value right-aligned at a fixed column,
+    // last column reserved for the demo marker.
+    int nameW = max(0, (int)cfg.lcdCols - 2 - 7 - 2);
     for (int i = 0; i < DS_COUNT; i++) {
       float t = dsTemp(i);
-      if (isnan(t)) snprintf(a, sizeof(a), cfg.ds[i].addr[0] ? "  --.-" : "  ----");
-      else snprintf(a, sizeof(a), "%5.1f%c", t, DEG);
-      snprintf(l, sizeof(l), "%d %-*.*s%6s", i + 1, nameW, nameW, cfg.ds[i].name, a);
+      if (!isnan(t)) snprintf(a, sizeof(a), "%5.1f%cC", t, DEG);
+      else snprintf(a, sizeof(a), cfg.ds[i].addr[0] ? " --.-  " : "  ---  ");
+      snprintf(l, sizeof(l), "%d %-*.*s%s", i + 1, nameW, nameW, cfg.ds[i].name, a);
       putLine(i, l);
     }
     return;
   }
+  // "1: 22.1 2: 45.4 D"
   for (int row = 0; row < 2; row++) {
-    fmtTemp(a, sizeof(a), dsTemp(row * 2));
-    fmtTemp(b, sizeof(b), dsTemp(row * 2 + 1));
-    snprintf(l, sizeof(l), "%d:%-5s %d:%-5s", row * 2 + 1, a, row * 2 + 2, b);
+    val5(a, sizeof(a), dsTemp(row * 2));
+    val5(b, sizeof(b), dsTemp(row * 2 + 1));
+    snprintf(l, sizeof(l), "%d:%s %d:%s", row * 2 + 1, a, row * 2 + 2, b);
     putLine(row, l);
   }
 }
 
 static void drawPageI2c() {
-  char l[41], p[16];
+  char l[41], v[12];
   if (big()) {
-    if (sens.ahtOk) snprintf(l, sizeof(l), "Temp  %6.1f%cC", sens.ahtTemp, DEG);
-    else snprintf(l, sizeof(l), "AHT20: no data");
-    putLine(0, l);
-    if (sens.ahtOk) snprintf(l, sizeof(l), "Humid %6.1f %%", sens.ahtHum);
-    else l[0] = 0;
-    putLine(1, l);
-    fmtPress(p, sizeof(p));
+    // label (6) | value %6.1f (decimal point always in column 10) | unit
+    if (sens.ahtOk) {
+      snprintf(l, sizeof(l), "Temp  %6.1f %cC", sens.ahtTemp, DEG);
+      putLine(0, l);
+      snprintf(l, sizeof(l), "Humid %6.1f %%", sens.ahtHum);
+      putLine(1, l);
+    } else {
+      putLine(0, "AHT20: no data");
+    }
     if (sens.bmpOk) {
-      snprintf(l, sizeof(l), "Press %s", p);
+      if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "Press %6.1f mmHg", hpaToMmHg(sens.bmpPress));
+      else snprintf(l, sizeof(l), "Press %6.1f hPa", sens.bmpPress);
       putLine(2, l);
-      snprintf(l, sizeof(l), "BMP T %6.1f%cC", sens.bmpTemp, DEG);
+      snprintf(l, sizeof(l), "BMP T %6.1f %cC", sens.bmpTemp, DEG);
       putLine(3, l);
     } else {
       putLine(2, "BMP280: no data");
     }
     return;
   }
-  if (sens.ahtOk) snprintf(l, sizeof(l), "T%.1f%cC H%.1f%%", sens.ahtTemp, DEG, sens.ahtHum);
+  // 2 rows: "T: 22.1°C H: 63%" / "P:740.5mm  22.7°"
+  if (sens.ahtOk) snprintf(l, sizeof(l), "T:%5.1f%cC H:%3.0f%%", sens.ahtTemp, DEG, sens.ahtHum);
   else snprintf(l, sizeof(l), "AHT20: no data");
   putLine(0, l);
   if (sens.bmpOk) {
-    fmtPress(p, sizeof(p));
-    snprintf(l, sizeof(l), "P%s %.1f%c", p, sens.bmpTemp, DEG);
+    val5(v, sizeof(v), sens.bmpTemp);
+    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "P:%5.1fmm %s%c", hpaToMmHg(sens.bmpPress), v, DEG);
+    else snprintf(l, sizeof(l), "P:%4.0fhPa %s%c", sens.bmpPress, v, DEG);
   } else {
     snprintf(l, sizeof(l), "BMP280: no data");
   }
   putLine(1, l);
 }
 
-// Everything on one screen (4-row LCD only).
+// Everything on one screen (4-row LCD only). Two 10-column halves,
+// decimal points at columns 5 and 15 in every row:
+//   1: 22.1°C 2: 45.4°C
+//   3: 62.0°C 4:  4.5°C
+//   T: 22.1°C H: 62.8 %
+//   P:740.5mm T: 22.7°C
 static void drawPageOverview() {
-  char l[41], a[8], b[8], p[16];
+  char l[41], a[12], b[12];
   for (int row = 0; row < 2; row++) {
-    fmtTemp(a, sizeof(a), dsTemp(row * 2));
-    fmtTemp(b, sizeof(b), dsTemp(row * 2 + 1));
-    snprintf(l, sizeof(l), "%d:%-6s   %d:%-6s", row * 2 + 1, a, row * 2 + 2, b);
+    val5(a, sizeof(a), dsTemp(row * 2));
+    val5(b, sizeof(b), dsTemp(row * 2 + 1));
+    snprintf(l, sizeof(l), "%d:%s%cC %d:%s%cC", row * 2 + 1, a, DEG, row * 2 + 2, b, DEG);
     putLine(row, l);
   }
-  if (sens.ahtOk) snprintf(l, sizeof(l), "%.1f%cC  %.1f%%", sens.ahtTemp, DEG, sens.ahtHum);
+  if (sens.ahtOk) snprintf(l, sizeof(l), "T:%5.1f%cC H:%5.1f %%", sens.ahtTemp, DEG, sens.ahtHum);
   else snprintf(l, sizeof(l), "AHT20: no data");
   putLine(2, l);
-  fmtPress(p, sizeof(p));
-  if (sens.bmpOk) snprintf(l, sizeof(l), "%s  %.1f%cC", p, sens.bmpTemp, DEG);
-  else snprintf(l, sizeof(l), "BMP280: no data");
+  if (sens.bmpOk) {
+    if (cfg.pressUnit == 1) snprintf(a, sizeof(a), "P:%5.1fmm", hpaToMmHg(sens.bmpPress));
+    else snprintf(a, sizeof(a), "P:%4.0fhPa", sens.bmpPress);
+    snprintf(l, sizeof(l), "%-9s T:%5.1f%cC", a, sens.bmpTemp, DEG);
+  } else {
+    snprintf(l, sizeof(l), "BMP280: no data");
+  }
   putLine(3, l);
 }
 
@@ -322,12 +339,19 @@ static void fmtRawCorr(char* l, size_t n, int slot, float offset) {
   }
 }
 
+// Sensor name unless it is just the default "T<n>".
+static const char* customName(int i) {
+  char def[4];
+  snprintf(def, sizeof(def), "T%d", i + 1);
+  return strcmp(cfg.ds[i].name, def) == 0 ? "" : cfg.ds[i].name;
+}
+
 static void drawMenu() {
   char l[41];
   if (big()) {
     putLine(0, "== Calibration ==");
     if (sel < DS_COUNT) {
-      snprintf(l, sizeof(l), "> T%d %s", sel + 1, cfg.ds[sel].name);
+      snprintf(l, sizeof(l), "> T%d %s", sel + 1, customName(sel));
       putLine(1, l);
       snprintf(l, sizeof(l), "  Offset %+.2f", cfg.ds[sel].offset);
       putLine(2, l);
@@ -353,7 +377,7 @@ static void drawMenu() {
 static void drawEdit() {
   char l[41];
   if (big()) {
-    snprintf(l, sizeof(l), "Edit T%d %s", sel + 1, cfg.ds[sel].name);
+    snprintf(l, sizeof(l), "Edit T%d %s", sel + 1, customName(sel));
     putLine(0, l);
     snprintf(l, sizeof(l), "Offset: [%+.2f]", editOffset);
     putLine(1, l);
@@ -376,7 +400,7 @@ static void draw() {
       switch (pageAt(page)) {
         case Page::Ds: frameDemo = cfg.dsDemo; drawPageDs(); break;
         case Page::I2c: drawPageI2c(); break;
-        case Page::Overview: frameDemo = cfg.dsDemo; drawPageOverview(); break;
+        case Page::Overview: drawPageOverview(); break;
         case Page::Net: drawPageNet(); break;
       }
       break;
