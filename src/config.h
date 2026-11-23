@@ -10,7 +10,7 @@ constexpr int DS_COUNT = 4;
 constexpr float OFFSET_LIMIT = 20.0f;
 
 struct DsSlot {
-  char name[24];
+  char name[64];  // UTF-8, up to ~30 Cyrillic chars
   char addr[17];   // 16 hex chars ROM code, "" = slot empty
   float offset;    // correction, °C
 };

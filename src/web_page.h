@@ -169,7 +169,7 @@ function renderDs(){
   C.ds.forEach((d,i)=>{
     const addrs=new Set([d.addr,...owFound.map(x=>x.addr)].filter(Boolean));
     let opt='<option value="">— пусто —</option>';addrs.forEach(a=>opt+=`<option ${a==d.addr?'selected':''}>${a}</option>`);
-    h+=`<tr><td>T${i+1}</td><td><input id="dn${i}" value="${d.name.replace(/"/g,'&quot;')}" maxlength="23"></td>
+    h+=`<tr><td>T${i+1}</td><td><input id="dn${i}" value="${d.name.replace(/"/g,'&quot;')}" maxlength="30"></td>
     <td><select id="da${i}">${opt}</select></td>
     <td><input id="do${i}" type="number" step="0.1" min="-20" max="20" value="${d.offset}"></td><td id="dv${i}">—</td></tr>`});
   $('dsTbl').innerHTML=h;updDsLive()}
@@ -259,6 +259,6 @@ async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))retur
   try{renderLcd(await api('/api/display'))}catch(e){}lcdBusy=false}
 document.querySelectorAll('.enc button').forEach(b=>b.onclick=async()=>{
   try{lcdBusy=true;renderLcd(await api('/api/display/input',JSON.parse(b.dataset.in)))}catch(e){toast(e.message)}lcdBusy=false});
-pollLcd();setInterval(pollLcd,800);
+pollLcd();setInterval(pollLcd,400);
 fillPins();loadCfg().catch(e=>toast(e.message));poll();setInterval(poll,2000);
 </script></body></html>)HTML";

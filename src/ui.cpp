@@ -81,6 +81,7 @@ static bool big() { return cfg.lcdRows >= 4; }
 
 static uint8_t frameRows = 0;  // rows written during the current frame
 static bool frameDemo = false;  // put demo marker 'D' into the last column of row 0
+static bool frameScroll = false;  // some field is scrolling -> redraw more often
 
 static void putLine(int row, const char* text) {
   // The frame is always rendered into `shown` (used by the web display mirror),
@@ -103,6 +104,7 @@ static void putLine(int row, const char* text) {
 static void frameBegin() {
   frameRows = 0;
   frameDemo = false;
+  frameScroll = false;
 }
 static void frameEnd() {
   for (int r = 0; r < cfg.lcdRows && r < 4; r++)
@@ -184,6 +186,74 @@ static int pageCount() { return big() ? 4 : 3; }
 
 // Fixed-width value: "%5.1f" or a placeholder of the same width, so decimal
 // points line up in every row ("-12.3", " 22.1", " --.-").
+// HD44780 ROM A00 has no Cyrillic: transliterate UTF-8 Russian to Latin for the LCD
+// ("Подача котла" -> "Podacha kotla"). Other non-ASCII characters become '?'.
+static void lcdText(char* out, size_t n, const char* in) {
+  static const char* const LOWER[32] = {"a", "b", "v", "g", "d", "e", "zh", "z", "i", "y", "k",
+                                        "l", "m", "n", "o", "p", "r", "s", "t", "u", "f", "h",
+                                        "c", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"};
+  size_t o = 0;
+  const uint8_t* p = (const uint8_t*)in;
+  while (*p && o + 1 < n) {
+    const char* rep = nullptr;
+    bool upper = false;
+    uint32_t cp = *p;
+    int len = 1;
+    if (cp >= 0xC0 && (p[1] & 0xC0) == 0x80) {  // 2-byte UTF-8 (covers Cyrillic)
+      cp = ((cp & 0x1F) << 6) | (p[1] & 0x3F);
+      len = 2;
+    } else if (cp >= 0xE0) {  // 3/4-byte sequences: skip
+      len = cp >= 0xF0 ? 4 : 3;
+      cp = '?';
+    }
+    if (cp >= 0x410 && cp <= 0x42F) { rep = LOWER[cp - 0x410]; upper = true; }
+    else if (cp >= 0x430 && cp <= 0x44F) rep = LOWER[cp - 0x430];
+    else if (cp == 0x401) { rep = "e"; upper = true; }
+    else if (cp == 0x451) rep = "e";
+    else if (cp == 0xB0) { out[o++] = DEG; p += len; continue; }
+
+    if (rep) {
+      for (int k = 0; rep[k] && o + 1 < n; k++)
+        out[o++] = (k == 0 && upper) ? toupper(rep[k]) : rep[k];
+    } else {
+      out[o++] = (cp >= 0x20 && cp < 0x7F) ? (char)cp : '?';
+    }
+    for (int k = 0; k < len && *p; k++) p++;
+  }
+  out[o] = 0;
+}
+
+// Sensor name as shown on the LCD.
+static const char* lcdName(int i) {
+  static char buf[DS_COUNT][64];
+  lcdText(buf[i], sizeof(buf[i]), cfg.ds[i].name);
+  return buf[i];
+}
+
+// Fits `text` into a field of `width` chars. Longer text scrolls inside the
+// field (marquee): pause at the start, shift one char per step, pause at the
+// end, repeat. The rest of the line stays still. Result is padded to width.
+static constexpr uint32_t SCROLL_STEP_MS = 450, SCROLL_PAUSE_MS = 1800;
+static void marquee(char* out, size_t n, const char* text, int width) {
+  int len = strlen(text);
+  if (width <= 0) {
+    out[0] = 0;
+    return;
+  }
+  if (len <= width) {
+    snprintf(out, n, "%-*s", width, text);
+    return;
+  }
+  frameScroll = true;
+  uint32_t span = len - width;
+  uint32_t cycle = 2 * SCROLL_PAUSE_MS + span * SCROLL_STEP_MS;
+  uint32_t t = millis() % cycle;
+  uint32_t pos = t < SCROLL_PAUSE_MS ? 0
+               : t < SCROLL_PAUSE_MS + span * SCROLL_STEP_MS ? (t - SCROLL_PAUSE_MS) / SCROLL_STEP_MS
+               : span;
+  snprintf(out, n, "%.*s", width, text + pos);
+}
+
 static void val5(char* out, size_t n, float v) {
   if (isnan(v)) snprintf(out, n, " --.-");
   else snprintf(out, n, "%5.1f", v);
@@ -199,7 +269,9 @@ static void drawPageDs() {
       float t = dsTemp(i);
       if (!isnan(t)) snprintf(a, sizeof(a), "%5.1f%cC", t, DEG);
       else snprintf(a, sizeof(a), cfg.ds[i].addr[0] ? " --.-  " : "  ---  ");
-      snprintf(l, sizeof(l), "%d %-*.*s%s", i + 1, nameW, nameW, cfg.ds[i].name, a);
+      char name[41];
+      marquee(name, sizeof(name), lcdName(i), nameW);
+      snprintf(l, sizeof(l), "%d %s%s", i + 1, name, a);
       putLine(i, l);
     }
     return;
@@ -268,9 +340,12 @@ static void drawPageOverview() {
   else snprintf(l, sizeof(l), "AHT20: no data");
   putLine(2, l);
   if (sens.bmpOk) {
-    if (cfg.pressUnit == 1) snprintf(a, sizeof(a), "P:%5.1fmm", hpaToMmHg(sens.bmpPress));
-    else snprintf(a, sizeof(a), "P:%4.0fhPa", sens.bmpPress);
-    snprintf(l, sizeof(l), "%-9s T:%5.1f%cC", a, sens.bmpTemp, DEG);
+    // "P:740.5mmHg" / "P:1013.2hPa" don't fit the 9-char half -> scroll in place
+    char full[24], field[16];
+    if (cfg.pressUnit == 1) snprintf(full, sizeof(full), "P:%5.1fmmHg", hpaToMmHg(sens.bmpPress));
+    else snprintf(full, sizeof(full), "P:%6.1fhPa", sens.bmpPress);
+    marquee(field, sizeof(field), full, 9);
+    snprintf(l, sizeof(l), "%s T:%5.1f%cC", field, sens.bmpTemp, DEG);
   } else {
     snprintf(l, sizeof(l), "BMP280: no data");
   }
@@ -343,7 +418,7 @@ static void fmtRawCorr(char* l, size_t n, int slot, float offset) {
 static const char* customName(int i) {
   char def[4];
   snprintf(def, sizeof(def), "T%d", i + 1);
-  return strcmp(cfg.ds[i].name, def) == 0 ? "" : cfg.ds[i].name;
+  return strcmp(cfg.ds[i].name, def) == 0 ? "" : lcdName(i);
 }
 
 static void drawMenu() {
@@ -492,7 +567,7 @@ void uiLoop() {
     dirty = true;
   }
 
-  if (dirty || now - lastDraw > 500) {
+  if (dirty || now - lastDraw > (frameScroll ? 150u : 500u)) {
     dirty = false;
     lastDraw = now;
     draw();
