@@ -61,10 +61,24 @@ static void putLine(int row, const char* text) {
   lcd->print(buf);
 }
 
-void uiMessage(const char* l1, const char* l2) {
+void uiMessage(const char* l1, const char* l2, uint32_t ms) {
   putLine(0, l1);
   putLine(1, l2);
-  msgUntil = millis() + 1200;
+  msgUntil = millis() + ms;
+}
+
+// Pops up the address on the LCD whenever the device gets a new IP
+// (STA connected / reconnected with another lease, or fallback AP started).
+static void watchNetwork() {
+  static String lastShown;
+  String key;
+  if (netStaConnected()) key = "S" + WiFi.localIP().toString();
+  else if (netApActive()) key = "A" + WiFi.softAPIP().toString();
+  if (key.isEmpty() || key == lastShown) return;
+  lastShown = key;
+  if (mode == Mode::Edit) return;  // don't disturb offset editing
+  if (key[0] == 'S') uiMessage("WiFi OK, IP:", key.c_str() + 1, 5000);
+  else uiMessage(netApSsid().c_str(), key.c_str() + 1, 5000);  // "ThermoHub-XXXX" fits 16 cols
 }
 
 static void fmtTemp(char* out, size_t n, float t) {
@@ -102,7 +116,9 @@ static void drawPageI2c() {
 static void drawPageNet() {
   char l[41];
   if (netStaConnected()) {
-    snprintf(l, sizeof(l), "%s", WiFi.localIP().toString().c_str());
+    String ip = WiFi.localIP().toString();
+    // "IP " prefix only if the full address still fits (xxx.xxx.xxx.xxx = 15 chars)
+    snprintf(l, sizeof(l), ip.length() + 3 <= cfg.lcdCols ? "IP %s" : "%s", ip.c_str());
     putLine(0, l);
     snprintf(l, sizeof(l), "RSSI %d up %luh", WiFi.RSSI(), millis() / 3600000UL);
     putLine(1, l);
@@ -172,6 +188,7 @@ void uiBegin() {
 }
 
 void uiLoop() {
+  watchNetwork();
   uint32_t now = millis();
   int d = encoderDelta();
   BtnEvent b = encoderButton();

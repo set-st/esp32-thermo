@@ -10,18 +10,8 @@
 
 static WebServer server(80);
 static uint32_t rebootAt = 0;
-static bool otaAuthOk = false;
 
 static void scheduleReboot(uint32_t ms = 1000) { rebootAt = millis() + ms; }
-
-// Read-only monitoring (/api/sensors, /metrics) is always open;
-// everything else requires auth if a web user is configured.
-static bool authed() {
-  if (!cfg.webUser[0]) return true;
-  if (server.authenticate(cfg.webUser, cfg.webPass)) return true;
-  server.requestAuthentication(BASIC_AUTH, "ThermoHub");
-  return false;
-}
 
 static void sendJson(JsonDocument& d, int code = 200) {
   String s;
@@ -91,7 +81,6 @@ static void handleMetrics() {
 }
 
 static void handleGetConfig() {
-  if (!authed()) return;
   JsonDocument d;
   configToJson(cfg, d["config"].to<JsonObject>(), false);
   JsonObject i = d["info"].to<JsonObject>();
@@ -109,7 +98,6 @@ static void handleGetConfig() {
 }
 
 static void handlePostConfig() {
-  if (!authed()) return;
   JsonDocument body;
   if (!parseBody(body)) return;
 
@@ -133,7 +121,6 @@ static void handlePostConfig() {
 
 // POST /api/offset {"slot":1..4, "offset":0.5}
 static void handleOffset() {
-  if (!authed()) return;
   JsonDocument body;
   if (!parseBody(body)) return;
   int slot = body["slot"] | 0;
@@ -149,21 +136,18 @@ static void handleOffset() {
 }
 
 static void handleScanOneWire() {
-  if (!authed()) return;
   JsonDocument d;
   sensorsScanOneWire(d["found"].to<JsonArray>());
   sendJson(d);
 }
 
 static void handleScanI2c() {
-  if (!authed()) return;
   JsonDocument d;
   sensorsScanI2c(d["found"].to<JsonArray>());
   sendJson(d);
 }
 
 static void handleScanWifi() {
-  if (!authed()) return;
   int n = WiFi.scanNetworks(false, false);
   JsonDocument d;
   JsonArray a = d["networks"].to<JsonArray>();
@@ -178,7 +162,6 @@ static void handleScanWifi() {
 }
 
 static void handleReboot() {
-  if (!authed()) return;
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
@@ -187,7 +170,6 @@ static void handleReboot() {
 }
 
 static void handleFactoryReset() {
-  if (!authed()) return;
   configReset();
   JsonDocument d;
   d["ok"] = true;
@@ -197,10 +179,6 @@ static void handleFactoryReset() {
 }
 
 static void handleOtaDone() {
-  if (!otaAuthOk) {
-    if (!authed()) return;
-    return sendError(401, "Unauthorized");
-  }
   if (Update.hasError()) return sendError(500, String("Update failed: ") + Update.errorString());
   JsonDocument d;
   d["ok"] = true;
@@ -212,13 +190,9 @@ static void handleOtaDone() {
 static void handleOtaUpload() {
   HTTPUpload& u = server.upload();
   if (u.status == UPLOAD_FILE_START) {
-    otaAuthOk = !cfg.webUser[0] || server.authenticate(cfg.webUser, cfg.webPass);
-    if (!otaAuthOk) return;
     Serial.printf("[ota] %s\n", u.filename.c_str());
     uiMessage("Updating...");
     Update.begin(UPDATE_SIZE_UNKNOWN);
-  } else if (!otaAuthOk) {
-    return;
   } else if (u.status == UPLOAD_FILE_WRITE) {
     if (Update.write(u.buf, u.currentSize) != u.currentSize) Update.printError(Serial);
   } else if (u.status == UPLOAD_FILE_END) {
@@ -230,8 +204,7 @@ static void handleOtaUpload() {
 
 void webBegin() {
   server.on("/", HTTP_GET, []() {
-    if (!authed()) return;
-    server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
+      server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
   });
   server.on("/api/sensors", HTTP_GET, handleSensors);
   server.on("/metrics", HTTP_GET, handleMetrics);

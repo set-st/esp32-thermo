@@ -93,10 +93,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
   <div class="row">
    <div><label>Интервал опроса, мс</label><input id="poll" type="number" min="1000" max="60000" step="500"></div>
    <div><label>Давление на LCD</label><select id="punit"><option value="1">мм рт. ст.</option><option value="0">гПа</option></select></div>
-   <div><label>Логин админки (пусто = без пароля)</label><input id="wuser" autocomplete="off"></div>
-   <div><label>Пароль админки</label><input id="wpw" type="password" placeholder="(не менять)" autocomplete="new-password"></div>
   </div>
-  <p class="mut">Чтение <code>/api/sensors</code> и <code>/metrics</code> всегда доступно без пароля.</p>
   <button class="btn" id="sysSave">Сохранить</button>
  </div>
  <div class="card"><h3>Обновление прошивки</h3>
@@ -124,7 +121,7 @@ const f1=v=>v==null?'—':v.toFixed(1);
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x==b));
   document.querySelectorAll('main section').forEach(s=>s.classList.toggle('hide',s.id!='t-'+b.dataset.t))});
-['wpass','appass','wpw'].forEach(id=>$(id).addEventListener('input',()=>dirty.add(id)));
+['wpass','appass'].forEach(id=>$(id).addEventListener('input',()=>dirty.add(id)));
 
 async function save(part,msg){
   try{const r=await api('/api/config',part);
@@ -156,8 +153,8 @@ async function loadCfg(){
   $('lcdAddr').value=C.lcd.addr?C.lcd.addr.toString(16):'0';$('lcdSize').value=C.lcd.cols+'x'+C.lcd.rows;
   $('encSteps').value=C.encoder.stepsPerDetent;$('encRev').checked=C.encoder.reverse;
   $('ssid').value=C.wifi.ssid;$('hostname').value=C.wifi.hostname;$('apName').textContent=I.apSsid;
-  $('poll').value=C.pollMs;$('punit').value=C.pressUnit;$('wuser').value=C.web.user;
-  ['wpass','appass','wpw'].forEach(id=>{$(id).value='';dirty.delete(id)});
+  $('poll').value=C.pollMs;$('punit').value=C.pressUnit;
+  ['wpass','appass'].forEach(id=>{$(id).value='';dirty.delete(id)});
   $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не найден'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не найден'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} мин`;
 }
 
@@ -191,8 +188,7 @@ $('wScan').onclick=async()=>{toast('Поиск сетей…');try{const n=(awai
 $('wSave').onclick=()=>{const w={ssid:$('ssid').value,hostname:$('hostname').value};
   if(dirty.has('wpass'))w.pass=$('wpass').value;if(dirty.has('appass'))w.apPass=$('appass').value;
   if(!w.hostname)return toast('Укажите имя хоста');save({wifi:w})};
-$('sysSave').onclick=()=>{const web={user:$('wuser').value};if(dirty.has('wpw'))web.pass=$('wpw').value;
-  save({pollMs:+$('poll').value,pressUnit:+$('punit').value,web})};
+$('sysSave').onclick=()=>save({pollMs:+$('poll').value,pressUnit:+$('punit').value});
 $('reboot').onclick=async()=>{if(!confirm('Перезагрузить?'))return;await api('/api/reboot',{});toast('Перезагрузка…',8000);setTimeout(()=>location.reload(),8000)};
 $('reset').onclick=async()=>{if(!confirm('Сбросить ВСЕ настройки, включая Wi‑Fi?'))return;await api('/api/factory-reset',{});toast('Сброшено. Подключитесь к точке доступа устройства.',10000)};
 $('fwBtn').onclick=()=>{const f=$('fw').files[0];if(!f)return;const fd=new FormData();fd.append('fw',f);

@@ -21,9 +21,6 @@ struct Config {
   char pass[65];
   char hostname[33];
   char apPass[65];   // fallback AP password (>= 8 chars, otherwise AP is open)
-  // Web admin auth (empty user = no auth)
-  char webUser[33];
-  char webPass[65];
   // Pins
   int8_t pinSda, pinScl, pinOneWire;
   int8_t pinEncA, pinEncB, pinEncBtn;  // -1 = not used

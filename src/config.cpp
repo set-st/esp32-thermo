@@ -82,10 +82,6 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
     w["hasPass"] = c.pass[0] != 0;
   }
 
-  JsonObject web = o["web"].to<JsonObject>();
-  web["user"] = c.webUser;
-  if (withSecrets) web["pass"] = c.webPass;
-
   JsonObject p = o["pins"].to<JsonObject>();
   p["sda"] = c.pinSda;
   p["scl"] = c.pinScl;
@@ -168,10 +164,6 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
   m.str(c.pass, sizeof(c.pass), w["pass"], true, "Wi-Fi password");
   m.str(c.hostname, sizeof(c.hostname), w["hostname"], true, "Hostname");
   m.str(c.apPass, sizeof(c.apPass), w["apPass"], true, "AP password");
-
-  JsonVariantConst web = j["web"];
-  m.str(c.webUser, sizeof(c.webUser), web["user"], false, "Web user");
-  m.str(c.webPass, sizeof(c.webPass), web["pass"], false, "Web password");
 
   JsonVariantConst p = j["pins"];
   m.num(c.pinSda, p["sda"], -1, 39, true, "SDA");
