@@ -31,7 +31,36 @@ void setup() {
   webBegin();
 }
 
+// Tiny serial console for debugging: "scan", "status", "reboot".
+static void serialConsole() {
+  static String line;
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c != '\n' && c != '\r') {
+      if (line.length() < 64) line += c;
+      continue;
+    }
+    line.trim();
+    if (line == "scan") {
+      JsonDocument d;
+      netScan(d.to<JsonArray>());
+      serializeJson(d, Serial);
+      Serial.println();
+    } else if (line == "status") {
+      Serial.printf("ssid='%s' connected=%d ap=%d ip=%s reason=%u heap=%u\n", cfg.ssid,
+                    netStaConnected(), netApActive(), netIp().c_str(), netLastReason(),
+                    ESP.getFreeHeap());
+    } else if (line == "reboot") {
+      ESP.restart();
+    } else if (line.length()) {
+      Serial.println("commands: scan, status, reboot");
+    }
+    line = "";
+  }
+}
+
 void loop() {
+  serialConsole();
   sensorsLoop();
   netLoop();
   webLoop();

@@ -151,16 +151,9 @@ static void handleScanI2c() {
 }
 
 static void handleScanWifi() {
-  int n = WiFi.scanNetworks(false, false);
   JsonDocument d;
-  JsonArray a = d["networks"].to<JsonArray>();
-  for (int i = 0; i < n; i++) {
-    JsonObject o = a.add<JsonObject>();
-    o["ssid"] = WiFi.SSID(i);
-    o["rssi"] = WiFi.RSSI(i);
-    o["open"] = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
-  }
-  WiFi.scanDelete();
+  int n = netScan(d["networks"].to<JsonArray>());
+  if (n < 0) return sendError(503, "Wi-Fi scan failed, try again");
   sendJson(d);
 }
 

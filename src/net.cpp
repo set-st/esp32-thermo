@@ -2,6 +2,8 @@
 #include "config.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <vector>
+#include <algorithm>
 
 static bool apActive = false;
 static volatile uint8_t lastReason = 0;
@@ -54,6 +56,65 @@ static void onWifiEvent(arduino_event_id_t ev, arduino_event_info_t info) {
 }
 
 uint8_t netLastReason() { return lastReason; }
+
+// Scan works in any state: in AP-only mode the STA interface is enabled
+// temporarily, and endless connect attempts (wrong password etc.) are paused,
+// otherwise the driver refuses to scan (WIFI_SCAN_FAILED).
+int netScan(JsonArray out) {
+  wifi_mode_t mode = WiFi.getMode();
+  bool connected = WiFi.status() == WL_CONNECTED;
+  bool addedSta = !(mode & WIFI_MODE_STA);
+  bool paused = false;
+
+  if (addedSta) {
+    WiFi.mode(mode == WIFI_MODE_AP ? WIFI_AP_STA : WIFI_STA);
+  } else if (!connected) {
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false, false);
+    paused = true;
+    delay(100);
+  }
+
+  int n = WIFI_SCAN_FAILED;
+  for (int attempt = 0; attempt < 3 && n < 0; attempt++) {
+    if (attempt) delay(300);
+    n = WiFi.scanNetworks(false, true, false, 150);
+  }
+  Serial.printf("[net] scan: %d networks\n", n);
+
+  // De-duplicate by SSID (mesh / several APs), keep the strongest, sort by signal.
+  struct Net { String ssid; int32_t rssi; uint8_t ch; bool open; };
+  std::vector<Net> nets;
+  for (int i = 0; i < n; i++) {
+    String ssid = WiFi.SSID(i);
+    if (ssid.isEmpty()) continue;  // hidden network
+    bool dup = false;
+    for (auto& x : nets)
+      if (x.ssid == ssid) {
+        dup = true;
+        if (WiFi.RSSI(i) > x.rssi) x = {ssid, WiFi.RSSI(i), (uint8_t)WiFi.channel(i), x.open};
+      }
+    if (!dup) nets.push_back({ssid, WiFi.RSSI(i), (uint8_t)WiFi.channel(i),
+                              WiFi.encryptionType(i) == WIFI_AUTH_OPEN});
+  }
+  WiFi.scanDelete();
+  std::sort(nets.begin(), nets.end(), [](const Net& a, const Net& b) { return a.rssi > b.rssi; });
+  for (auto& x : nets) {
+    JsonObject o = out.add<JsonObject>();
+    o["ssid"] = x.ssid;
+    o["rssi"] = x.rssi;
+    o["channel"] = x.ch;
+    o["open"] = x.open;
+  }
+
+  // Restore previous state.
+  if (addedSta && !cfg.ssid[0]) WiFi.mode(mode);
+  if (paused) {
+    WiFi.setAutoReconnect(true);
+    WiFi.begin(cfg.ssid, cfg.pass);
+  }
+  return n;
+}
 
 // Human readable reason why the STA link is down ("" if connected / nothing to report).
 const char* netStaProblem(bool shortText) {

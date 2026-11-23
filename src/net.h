@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <ArduinoJson.h>
 
 void netBegin(bool forceAp);
 void netLoop();
@@ -9,3 +10,5 @@ String netApSsid();
 String netIp();  // STA IP if connected, otherwise AP IP
 uint8_t netLastReason();  // last STA disconnect reason (0 = none)
 const char* netStaProblem(bool shortText);  // "" if nothing to report
+// Scans for networks (any state). Returns raw count or <0 on failure.
+int netScan(JsonArray out);

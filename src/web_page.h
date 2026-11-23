@@ -43,6 +43,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 .enc button{border:1px solid var(--bd);background:var(--bg);color:var(--fg);border-radius:10px;padding:10px 14px;font:inherit;font-size:18px;cursor:pointer;min-width:52px}
 .enc button:active{background:var(--acc);color:#fff}
 .enc .wide{grid-column:span 3;font-size:13px}
+#nets{margin-top:6px}#nets button{display:flex;justify-content:space-between;width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--fg);padding:8px 10px;border-radius:8px;margin-top:4px;cursor:pointer;font:inherit;text-align:left}
+#nets button:hover{border-color:var(--acc)}#nets .mut{white-space:nowrap;margin-left:8px}
 #demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
@@ -108,7 +110,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 <section id="t-wifi" class="hide"><div class="card">
  <h3>Wi‑Fi</h3>
  <div id="wStat" class="mut"></div>
- <label>Сеть (SSID)</label><input id="ssid" list="ssids"><datalist id="ssids"></datalist>
+ <label>Сеть (SSID)</label><input id="ssid"><div id="nets"></div>
  <label>Пароль</label><input id="wpass" type="password" placeholder="(не менять)">
  <label>Имя хоста (mDNS: имя.local)</label><input id="hostname">
  <label>Пароль точки доступа (мин. 8 символов, пусто = открытая)</label><input id="appass" type="password" placeholder="(не менять)">
@@ -213,8 +215,15 @@ $('pinsSave').onclick=()=>{
   const [cols,rows]=$('lcdSize').value.split('x').map(Number);const addr=parseInt($('lcdAddr').value||'0',16);
   if(isNaN(addr))return toast('Неверный адрес LCD');
   save({pins,lcd:{addr,cols,rows},encoder:{stepsPerDetent:+$('encSteps').value,reverse:$('encRev').checked}})};
-$('wScan').onclick=async()=>{toast('Поиск сетей…');try{const n=(await api('/api/scan/wifi')).networks;
-  $('ssids').innerHTML=n.map(x=>`<option value="${x.ssid.replace(/"/g,'&quot;')}">${x.rssi} dBm${x.open?' открытая':''}</option>`).join('');toast('Найдено сетей: '+n.length)}catch(e){toast(e.message)}};
+function bars(r){return r>=-55?'▂▄▆█':r>=-67?'▂▄▆_':r>=-75?'▂▄__':'▂___'}
+$('wScan').onclick=async()=>{const b=$('wScan');b.disabled=true;b.textContent='Поиск…';$('nets').innerHTML='';
+  try{const n=(await api('/api/scan/wifi')).networks;
+    if(!n.length)$('nets').innerHTML='<div class="mut">Сети не найдены</div>';
+    n.forEach(x=>{const e=document.createElement('button');e.type='button';
+      e.innerHTML=`<span></span><span class="mut">${bars(x.rssi)} ${x.rssi} dBm · кан. ${x.channel}${x.open?' · открытая':' · 🔒'}</span>`;
+      e.firstChild.textContent=x.ssid;
+      e.onclick=()=>{$('ssid').value=x.ssid;$('nets').innerHTML='';$('wpass').focus()};$('nets').appendChild(e)});
+  }catch(e){toast('Сканирование: '+e.message,5000)}b.disabled=false;b.textContent='Найти сети'};
 $('wSave').onclick=()=>{const w={ssid:$('ssid').value,hostname:$('hostname').value};
   if(dirty.has('wpass'))w.pass=$('wpass').value;if(dirty.has('appass'))w.apPass=$('appass').value;
   if(!w.hostname)return toast('Укажите имя хоста');save({wifi:w})};
