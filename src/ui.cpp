@@ -215,7 +215,10 @@ static int virtDelta = 0;
 static BtnEvent virtBtn = BtnEvent::None;
 
 void uiVirtualInput(int turn, int press) {
-  virtDelta += constrain(turn, -10, 10);
+  turn = constrain(turn, -10, 10);
+  if (turn) encoderLog(turn > 0 ? 'R' : 'L', 1, abs(turn));
+  if (press) encoderLog(press == 1 ? 'C' : 'H', 1);
+  virtDelta += turn;
   if (press == 1) virtBtn = BtnEvent::Click;
   else if (press == 2) virtBtn = BtnEvent::Long;
 }

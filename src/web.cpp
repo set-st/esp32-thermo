@@ -5,6 +5,7 @@
 #include "ui.h"
 #include "web_page.h"
 #include "inet_update.h"
+#include "encoder.h"
 #include <WebServer.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -164,6 +165,7 @@ static void handleScanWifi() {
 static void handleDisplay() {
   JsonDocument d;
   uiScreenToJson(d.to<JsonObject>());
+  encoderDiagToJson(d["enc"].to<JsonObject>(), server.arg("since").toInt());
   sendJson(d);
 }
 
