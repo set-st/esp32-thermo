@@ -6,6 +6,7 @@
 #include "ui.h"
 #include "net.h"
 #include "web.h"
+#include "inet_update.h"
 
 void setup() {
   Serial.begin(115200);
@@ -65,5 +66,6 @@ void loop() {
   netLoop();
   webLoop();
   uiLoop();
+  inetUpdateLoop();
   delay(2);
 }

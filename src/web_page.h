@@ -54,6 +54,9 @@ table.api td:last-child{width:1%;white-space:nowrap}
 .jk{color:#7c3aed}.js{color:#15803d}.jn{color:#c2410c}.jb{color:#2563eb}.jz{color:#9ca3af}
 @media(prefers-color-scheme:dark){.jk{color:#c4b5fd}.js{color:#86efac}.jn{color:#fdba74}.jb{color:#93c5fd}}
 details summary{cursor:pointer;margin-top:10px}
+#updBar0{background:#2563eb1a;border:1px solid var(--acc);border-radius:12px;padding:10px 14px;margin-bottom:12px}
+.notes{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;white-space:pre-wrap;font:13px/1.4 system-ui,sans-serif}
+.bar{height:10px;background:var(--bd);border-radius:5px;overflow:hidden;margin:10px 0 4px}.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
 #demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
@@ -64,6 +67,7 @@ details summary{cursor:pointer;margin-top:10px}
 <main>
 
 <section id="t-mon">
+ <div id="updBar0" class="hide">⬆ Доступна нова прошивка <b id="updBarVer"></b> — <a href="#" id="updGo">оновити</a></div>
  <div id="demoBar" class="hide">⚠ Демо-режим: показники DS18B20 емулюються. Вимкнути — вкладка «Термодатчики».</div>
  <div class="card"><h3>Дисплей <span class="mut" id="lcdInfo"></span></h3>
   <div class="lcdwrap" id="lcdwrap">
@@ -155,7 +159,19 @@ details summary{cursor:pointer;margin-top:10px}
   </div>
   <button class="btn" id="sysSave">Зберегти</button>
  </div>
- <div class="card"><h3>Оновлення прошивки</h3>
+ <div class="card"><h3>Оновлення через інтернет</h3>
+  <div id="updInfo" class="mut">Поточна версія: …</div>
+  <div id="updNew" class="hide">
+   <p><b id="updVer"></b> <a id="updLink" target="_blank">сторінка релізу</a></p>
+   <pre id="updNotes" class="notes"></pre>
+   <button class="btn" id="updInstall">Встановити</button>
+  </div>
+  <div id="updProg" class="hide"><div class="bar"><i id="updBar"></i></div><div id="updSt" class="mut"></div></div>
+  <button class="btn sec" id="updCheck">Перевірити оновлення</button>
+  <label class="sw" style="margin-top:12px"><input type="checkbox" id="updAuto"><i></i>Перевіряти автоматично раз на добу</label>
+  <p class="mut">Встановлюються лише прошивки, підписані ключем проєкту: підпис перевіряється на пристрої перед записом.</p>
+ </div>
+ <div class="card"><h3>Оновлення прошивки з файлу</h3>
   <input type="file" id="fw" accept=".bin"><button class="btn" id="fwBtn">Завантажити</button> <span id="fwSt" class="mut"></span>
  </div>
  <div class="card"><h3>Пристрій</h3><div id="info" class="mut"></div>
@@ -320,5 +336,30 @@ $('apiCopy').onclick=()=>{
   const ta=document.createElement('textarea');ta.value=apiText;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
   try{document.execCommand('copy');toast('Скопійовано')}catch(e){toast('Не вдалося скопіювати')}ta.remove()};
 $('apiClose').onclick=()=>$('apiOut').classList.add('hide');
+function fmtAgo(s){return s<90?'щойно':s<5400?Math.round(s/60)+' хв тому':s<172800?Math.round(s/3600)+' год тому':Math.round(s/86400)+' дн тому'}
+function renderUpd(u){
+  let t=`Поточна версія: <b>${esc(u.current)}</b> · репозиторій ${esc(u.repo)}`;
+  if(u.checked)t+=`<br>Перевірено ${fmtAgo(u.checkedAgo_s)}: `+(u.error?`<span class="bad">${esc(u.error)}</span>`:u.available?`доступна <b>${esc(u.latest)}</b>`:`встановлено останню версію (${esc(u.latest)})`);
+  $('updInfo').innerHTML=t;$('updAuto').checked=u.autoCheck;
+  $('updNew').classList.toggle('hide',!u.available||u.phase=='downloading'||u.phase=='verifying'||u.phase=='done');
+  if(u.available){$('updVer').textContent='Нова версія '+u.latest+(u.size?` (${Math.round(u.size/1024)} КБ)`:'');$('updLink').href=u.url;
+    if(u.notes!=null)$('updNotes').textContent=u.notes||'(без опису)'}
+  $('updBar0').classList.toggle('hide',!u.available);$('updBarVer').textContent=u.latest||'';
+  const busy=u.phase=='downloading'||u.phase=='verifying'||u.phase=='done';
+  $('updProg').classList.toggle('hide',!busy&&u.phase!='error');
+  $('updBar').style.width=(u.phase=='downloading'?u.progress:busy?100:0)+'%';
+  $('updSt').innerHTML=u.phase=='downloading'?`Завантаження… ${u.progress}%`:u.phase=='verifying'?'Перевірка підпису…':u.phase=='done'?'Встановлено, перезавантаження…':u.phase=='error'?`<span class="bad">${esc(u.installError)}</span>`:'';
+  $('updCheck').disabled=$('updInstall').disabled=busy;return u}
+let updTimer=null;
+async function pollUpd(){try{const u=renderUpd(await api('/api/update'));
+  if(u.phase=='done'){clearInterval(updTimer);setTimeout(()=>location.reload(),15000)}
+  else if(u.phase!='downloading'&&u.phase!='verifying'){clearInterval(updTimer);updTimer=null}}catch(e){}}
+$('updCheck').onclick=async()=>{const b=$('updCheck');b.disabled=true;b.textContent='Перевірка…';
+  try{renderUpd(await api('/api/update/check',{}))}catch(e){toast(e.message)}b.disabled=false;b.textContent='Перевірити оновлення'};
+$('updInstall').onclick=async()=>{if(!confirm('Встановити нову прошивку? Пристрій перезавантажиться.'))return;
+  try{renderUpd(await api('/api/update/install',{}));updTimer=setInterval(pollUpd,1000)}catch(e){toast(e.message,6000)}};
+$('updAuto').onchange=e=>save({updAuto:e.target.checked});
+$('updGo').onclick=e=>{e.preventDefault();document.querySelector('nav button[data-t=sys]').click()};
+api('/api/update').then(renderUpd).catch(()=>{});
 fillPins();loadCfg().catch(e=>toast(e.message));poll();setInterval(poll,2000);
 </script></body></html>)HTML";

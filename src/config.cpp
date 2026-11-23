@@ -34,6 +34,7 @@ void configDefaults(Config& c) {
   c.encStepsPerDetent = 4;
   c.pollMs = 2000;
   c.pressUnit = 1;
+  c.updAuto = true;
   for (int i = 0; i < DS_COUNT; i++) {
     snprintf(c.ds[i].name, sizeof(c.ds[i].name), "T%d", i + 1);
     c.ds[i].addr[0] = 0;
@@ -108,6 +109,7 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
   o["pollMs"] = c.pollMs;
   o["pressUnit"] = c.pressUnit;
   o["dsDemo"] = c.dsDemo;
+  o["updAuto"] = c.updAuto;
 
   JsonArray ds = o["ds"].to<JsonArray>();
   for (int i = 0; i < DS_COUNT; i++) {
@@ -195,6 +197,7 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
   m.num(c.pollMs, j["pollMs"], 1000, 60000, false, "Інтервал опитування");
   m.num(c.pressUnit, j["pressUnit"], 0, 1, false, "Pressure unit");
   m.flag(c.dsDemo, j["dsDemo"], false);
+  m.flag(c.updAuto, j["updAuto"], false);
 
   JsonArrayConst ds = j["ds"];
   for (int i = 0; i < DS_COUNT && i < (int)ds.size(); i++) {

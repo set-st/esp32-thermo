@@ -14,6 +14,7 @@
 #include "sensors.h"
 #include "encoder.h"
 #include "net.h"
+#include "inet_update.h"
 #include <Wire.h>
 #include <WiFi.h>
 #include <LiquidCrystal_I2C.h>
@@ -587,7 +588,25 @@ static void drawEdit() {
   putLine(1, l);
 }
 
+static void drawUpdate(int p) {
+  char l[41];
+  frameBegin();
+  int r = big() ? 1 : 0;
+  putLine(r, "Firmware update");
+  if (p <= 100) snprintf(l, sizeof(l), "Downloading %3d%%", p);
+  else snprintf(l, sizeof(l), "Verifying...");
+  putLine(r + 1, l);
+  if (big()) putLine(3, "Do not power off!");
+  frameEnd();
+  frameScroll = true;  // keep redrawing quickly
+}
+
 static void draw() {
+  int up = inetUpdateProgress();
+  if (up >= 0) {
+    lastActivity = millis();  // keep the backlight on while updating
+    return drawUpdate(up);
+  }
   if (millis() < msgUntil) return;
   frameBegin();
   switch (mode) {

@@ -4,6 +4,7 @@
 #include "net.h"
 #include "ui.h"
 #include "web_page.h"
+#include "inet_update.h"
 #include <WebServer.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -96,6 +97,9 @@ static void handleGetConfig() {
   i["lcdAddr"] = uiLcdAddr();
   i["bmpAddr"] = sens.bmpAddr;
   i["freeHeap"] = ESP.getFreeHeap();
+  JsonObject u = i["update"].to<JsonObject>();
+  inetUpdateToJson(u);
+  u.remove("notes");
   i["uptime_s"] = millis() / 1000;
   sendJson(d);
 }
@@ -188,6 +192,24 @@ static void handleCharset() {
   sendJson(d);
 }
 
+// Internet updates (GitHub Releases, signed firmware only)
+static void handleUpdateState() {
+  JsonDocument d;
+  inetUpdateToJson(d.to<JsonObject>());
+  sendJson(d);
+}
+
+static void handleUpdateCheck() {
+  inetUpdateCheck();
+  handleUpdateState();
+}
+
+static void handleUpdateInstall() {
+  String err;
+  if (!inetUpdateInstall(err)) return sendError(409, err);
+  handleUpdateState();
+}
+
 static void handleReboot() {
   JsonDocument d;
   d["ok"] = true;
@@ -244,6 +266,9 @@ void webBegin() {
   server.on("/api/display", HTTP_GET, handleDisplay);
   server.on("/api/display/input", HTTP_POST, handleDisplayInput);
   server.on("/api/display/charset", HTTP_POST, handleCharset);
+  server.on("/api/update", HTTP_GET, handleUpdateState);
+  server.on("/api/update/check", HTTP_POST, handleUpdateCheck);
+  server.on("/api/update/install", HTTP_POST, handleUpdateInstall);
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/factory-reset", HTTP_POST, handleFactoryReset);
   server.on("/update", HTTP_POST, handleOtaDone, handleOtaUpload);
