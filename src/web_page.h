@@ -47,8 +47,6 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 .led{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--bd);border-radius:999px;padding:3px 9px;font:600 12px/1.2 monospace}
 .led i{width:9px;height:9px;border-radius:50%;background:#9ca3af}
 .led.hi i{background:#9ca3af}.led.lo i{background:#22c55e;box-shadow:0 0 6px #22c55e}
-.evlog{max-height:150px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:4px 8px;margin-top:6px;font:12px/1.5 ui-monospace,Consolas,monospace;background:var(--bg)}
-.evlog div{display:flex;gap:8px}.evlog .src{color:var(--mut);min-width:52px}.evlog .ago{color:var(--mut);margin-left:auto}
 .warn{color:#d97706}
 .enc .wide{grid-column:span 3;font-size:13px}
 #nets{margin-top:6px}#nets button{display:flex;justify-content:space-between;width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--fg);padding:8px 10px;border-radius:8px;margin-top:4px;cursor:pointer;font:inherit;text-align:left}
@@ -91,7 +89,6 @@ details summary{cursor:pointer;margin-top:10px}
     <div class="leds"><span class="led" id="ledA"><i></i>A</span><span class="led" id="ledB"><i></i>B</span><span class="led" id="ledS"><i></i>SW</span></div>
     <div class="mut" id="encCnt"></div>
     <div class="warn" id="encWarn"></div>
-    <div class="evlog" id="encLog"><div class="mut">Покрутіть енкодер або натисніть кнопку…</div></div>
    </div>
   </div>
  </div>
@@ -323,7 +320,6 @@ let lcdBusy=false;
 async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))return;lcdBusy=true;
   try{const j=await api('/api/display?since='+encSeq);renderLcd(j);if(j.enc)renderEnc(j.enc)}catch(e){}lcdBusy=false}
 let encSeq=0,encInit=false;
-const EV={R:['⟳','поворот вправо'],L:['⟲','поворот вліво'],D:['↓','кнопку натиснуто'],U:['↑','кнопку відпущено'],C:['●','клік'],H:['●','довге натискання']};
 function flashBtn(type){const sel=type=='R'?'{"turn":1}':type=='L'?'{"turn":-1}':type=='C'?'{"press":"click"}':type=='H'?'{"press":"long"}':null;
   if(!sel)return;const b=document.querySelector(`.enc button[data-in='${sel}']`);if(!b)return;b.classList.add('hit');setTimeout(()=>b.classList.remove('hit'),250)}
 function renderEnc(e){
@@ -336,12 +332,8 @@ function renderEnc(e){
   if(e.edgesB>20&&e.edgesA==0)w.push('Лінія A не змінюється — перевірте підключення CLK');
   $('encWarn').innerHTML=w.map(esc).join('<br>');
   if(!encInit){encInit=true;encSeq=e.seq;return}
-  if(!e.events.length)return;
-  const log=$('encLog');if(log.firstChild&&log.firstChild.classList.contains('mut'))log.innerHTML='';
-  e.events.forEach(ev=>{encSeq=Math.max(encSeq,ev.seq);const [ic,txt]=EV[ev.type]||['?',ev.type];
-    const d=document.createElement('div');d.innerHTML=`<span class="src">${ev.src=='hw'?'енкодер':'веб'}</span><span>${ic} ${txt}${ev.v>1?' ×'+ev.v:''}</span><span class="ago">${new Date(Date.now()-ev.ago).toLocaleTimeString()}</span>`;
-    log.prepend(d);if(ev.src=='hw')flashBtn(ev.type)});
-  while(log.children.length>40)log.lastChild.remove()}
+  // physical encoder events light up the virtual encoder buttons
+  e.events.forEach(ev=>{encSeq=Math.max(encSeq,ev.seq);if(ev.src=='hw')flashBtn(ev.type)})}
 document.querySelectorAll('.enc button').forEach(b=>b.onclick=async()=>{
   try{lcdBusy=true;renderLcd(await api('/api/display/input',JSON.parse(b.dataset.in)))}catch(e){toast(e.message)}lcdBusy=false});
 pollLcd();setInterval(pollLcd,400);
