@@ -2,6 +2,7 @@
 #include "config.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include "lock.h"
 #include <vector>
 #include <algorithm>
 
@@ -78,7 +79,7 @@ int netScan(JsonArray out) {
   int n = WIFI_SCAN_FAILED;
   for (int attempt = 0; attempt < 3 && n < 0; attempt++) {
     if (attempt) delay(300);
-    n = WiFi.scanNetworks(false, true, false, 150);
+    n = WiFi.scanNetworks(false, true, false, 100);
   }
   Serial.printf("[net] scan: %d networks\n", n);
 
@@ -177,6 +178,9 @@ void netBegin(bool forceAp) {
   } else {
     WiFi.mode(WIFI_STA);
   }
+  // Modem sleep (default) wakes the radio only on AP beacons: +100..300 ms per
+  // packet and multi-second stalls for the web UI. Mains-powered device -> off.
+  WiFi.setSleep(false);
   WiFi.onEvent(onWifiEvent);
   if (cfg.ssid[0]) {
     diagScan();
@@ -196,6 +200,7 @@ void netLoop() {
     if (lostSince) {
       Serial.printf("[net] connected, IP %s\n", WiFi.localIP().toString().c_str());
       connectedSince = now;
+      WiFi.setSleep(false);  // re-apply after (re)connect
     }
     lostSince = 0;
     if (apActive && !apForced && now - connectedSince > AP_LINGER_MS &&
@@ -214,4 +219,43 @@ String netIp() {
   if (netStaConnected()) return WiFi.localIP().toString();
   if (apActive) return WiFi.softAPIP().toString();
   return "0.0.0.0";
+}
+
+// ---- background scan for the web UI ----------------------------------------------
+// A scan takes 2-6 s, far too long for the async web server callback, so it runs
+// in its own task and the client polls for the result.
+static JsonDocument scanDoc;
+static volatile uint8_t scanState = 0;  // 0 idle, 1 running, 2 done, 3 failed
+static uint32_t scanDoneAt = 0;
+
+static void scanTask(void*) {
+  JsonDocument d;
+  int n = netScan(d.to<JsonArray>());
+  {
+    StateGuard g;
+    scanDoc = d;
+    scanState = n < 0 ? 3 : 2;
+    scanDoneAt = millis();
+  }
+  vTaskDelete(nullptr);
+}
+
+int netScanAsync(JsonArray out) {
+  StateGuard g;
+  if (scanState == 1) return 1;
+  if (scanState == 3) {
+    scanState = 0;
+    return -1;
+  }
+  if (scanState == 2 && millis() - scanDoneAt < 15000) {
+    for (JsonVariant v : scanDoc.as<JsonArray>()) out.add(v);
+    scanState = 0;
+    return 0;
+  }
+  scanState = 1;
+  if (xTaskCreatePinnedToCore(scanTask, "wifiscan", 6144, nullptr, 1, nullptr, 0) != pdPASS) {
+    scanState = 0;
+    return -1;
+  }
+  return 1;
 }

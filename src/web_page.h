@@ -194,6 +194,7 @@ details summary{cursor:pointer;margin-top:10px}
 <div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let C=null,I=null,S=null,owFound=[];
 const dirty=new Set();
 const PINS=[0,2,4,5,12,13,14,15,16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39];
@@ -274,7 +275,8 @@ $('pinsSave').onclick=()=>{
   save({pins,lcd:{addr,cols,rows,charset:+$('lcdCharset').value},encoder:{stepsPerDetent:+$('encSteps').value,reverse:$('encRev').checked}})};
 function bars(r){return r>=-55?'▂▄▆█':r>=-67?'▂▄▆_':r>=-75?'▂▄__':'▂___'}
 $('wScan').onclick=async()=>{const b=$('wScan');b.disabled=true;b.textContent='Пошук…';$('nets').innerHTML='';
-  try{const n=(await api('/api/scan/wifi')).networks;
+  try{let r,t=0;while((r=await api('/api/scan/wifi')).scanning&&t++<40)await sleep(700);
+    if(r.scanning)throw new Error('пошук триває задовго');const n=r.networks;
     if(!n.length)$('nets').innerHTML='<div class="mut">Мережі не знайдено</div>';
     n.forEach(x=>{const e=document.createElement('button');e.type='button';
       e.innerHTML=`<span></span><span class="mut">${bars(x.rssi)} ${x.rssi} dBm · кан. ${x.channel}${x.open?' · відкрита':' · 🔒'}</span>`;
@@ -382,7 +384,9 @@ async function pollUpd(){try{const u=renderUpd(await api('/api/update'));
   if(u.phase=='done'){clearInterval(updTimer);setTimeout(()=>location.reload(),15000)}
   else if(u.phase!='downloading'&&u.phase!='verifying'){clearInterval(updTimer);updTimer=null}}catch(e){}}
 $('updCheck').onclick=async()=>{const b=$('updCheck');b.disabled=true;b.textContent='Перевірка…';
-  try{renderUpd(await api('/api/update/check',{}))}catch(e){toast(e.message)}b.disabled=false;b.textContent='Перевірити оновлення'};
+  try{let u=renderUpd(await api('/api/update/check',{})),t=0;
+    while(u.checking&&t++<40){await sleep(700);u=renderUpd(await api('/api/update'))}}catch(e){toast(e.message)}
+  b.disabled=false;b.textContent='Перевірити оновлення'};
 $('updInstall').onclick=async()=>{if(!confirm('Встановити нову прошивку? Пристрій перезавантажиться.'))return;
   try{renderUpd(await api('/api/update/install',{}));updTimer=setInterval(pollUpd,1000)}catch(e){toast(e.message,6000)}};
 $('updAuto').onchange=e=>save({updAuto:e.target.checked});

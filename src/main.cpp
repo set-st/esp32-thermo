@@ -7,11 +7,13 @@
 #include "net.h"
 #include "web.h"
 #include "inet_update.h"
+#include "lock.h"
 
 void setup() {
   Serial.begin(115200);
   delay(50);
   Serial.printf("\nThermoHub %s\n", FW_VERSION);
+  stateLockInit();
 
   configLoad();
   Serial.printf("[cfg] SDA=%d SCL=%d 1W=%d ENC=%d/%d BTN=%d\n", cfg.pinSda, cfg.pinScl,
@@ -60,12 +62,17 @@ static void serialConsole() {
   }
 }
 
+// Arduino loop runs on core 1; the web server lives on core 0 (see web.cpp).
+// One pass takes a few milliseconds and holds the state lock only for that time.
 void loop() {
   serialConsole();
-  sensorsLoop();
-  netLoop();
-  webLoop();
-  uiLoop();
-  inetUpdateLoop();
-  delay(2);
+  {
+    StateGuard g;
+    sensorsLoop();
+    netLoop();
+    uiLoop();
+    inetUpdateLoop();
+  }
+  webLoop();  // scheduled reboot only
+  delay(5);
 }

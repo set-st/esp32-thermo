@@ -7,6 +7,7 @@
 #include <mbedtls/md.h>
 #include <mbedtls/pk.h>
 #include "fw_pubkey.h"
+#include "lock.h"
 
 #ifndef GH_REPO
 #define GH_REPO "set-st/esp32-thermo"
@@ -27,6 +28,7 @@ static volatile Phase phase = Phase::Idle;
 static volatile int progress = 0;
 static String installError;
 static uint32_t doneAt = 0;
+static volatile bool checking = false;
 
 // ---- versions --------------------------------------------------------------------
 
@@ -54,13 +56,15 @@ static bool isNewer(const String& latest, const String& current) {
 
 // ---- check -------------------------------------------------------------------------
 
-bool inetUpdateCheck() {
+static bool setCheckError(const String& e) {
+  StateGuard g;
   st.checkedAt = millis() | 1;
-  st.error = "";
-  if (WiFi.status() != WL_CONNECTED) {
-    st.error = "Немає підключення до мережі";
-    return false;
-  }
+  st.error = e;
+  return false;
+}
+
+bool inetUpdateCheck() {
+  if (WiFi.status() != WL_CONNECTED) return setCheckError("Немає підключення до мережі");
 
   // TLS is used without certificate pinning: authenticity of the firmware itself
   // is guaranteed by the signature check before installing.
@@ -69,16 +73,13 @@ bool inetUpdateCheck() {
   HTTPClient http;
   http.setUserAgent(USER_AGENT);
   http.setTimeout(15000);
-  if (!http.begin(client, "https://api.github.com/repos/" GH_REPO "/releases/latest")) {
-    st.error = "Не вдалося з'єднатися з GitHub";
-    return false;
-  }
+  if (!http.begin(client, "https://api.github.com/repos/" GH_REPO "/releases/latest"))
+    return setCheckError("Не вдалося з'єднатися з GitHub");
   http.addHeader("Accept", "application/vnd.github+json");
   int code = http.GET();
   if (code != 200) {
-    st.error = code == 404 ? "Релізів ще немає" : "GitHub відповів HTTP " + String(code);
     http.end();
-    return false;
+    return setCheckError(code == 404 ? String("Релізів ще немає") : "GitHub відповів HTTP " + String(code));
   }
   String body = http.getString();
   http.end();
@@ -91,11 +92,12 @@ bool inetUpdateCheck() {
   filter["assets"][0]["browser_download_url"] = true;
   filter["assets"][0]["size"] = true;
   JsonDocument d;
-  if (deserializeJson(d, body, DeserializationOption::Filter(filter))) {
-    st.error = "Некоректна відповідь GitHub";
-    return false;
-  }
+  if (deserializeJson(d, body, DeserializationOption::Filter(filter)))
+    return setCheckError("Некоректна відповідь GitHub");
 
+  StateGuard g;
+  st.checkedAt = millis() | 1;
+  st.error = "";
   st.latest = d["tag_name"] | "";
   st.notes = d["body"] | "";
   if (st.notes.length() > 2000) st.notes = st.notes.substring(0, 2000) + "…";
@@ -120,6 +122,22 @@ bool inetUpdateCheck() {
   return true;
 }
 
+static void checkTask(void*) {
+  inetUpdateCheck();
+  checking = false;
+  vTaskDelete(nullptr);
+}
+
+bool inetUpdateCheckAsync() {
+  if (checking) return true;
+  checking = true;
+  if (xTaskCreatePinnedToCore(checkTask, "updcheck", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
+    checking = false;
+    return false;
+  }
+  return true;
+}
+
 // ---- install -----------------------------------------------------------------------
 
 static bool httpGetBegin(HTTPClient& http, WiFiClientSecure& client, const String& url) {
@@ -130,10 +148,12 @@ static bool httpGetBegin(HTTPClient& http, WiFiClientSecure& client, const Strin
   return http.begin(client, url);
 }
 
+static String sigUrl, binUrl;  // copied from `st` when the install starts
+
 static String downloadSignature(uint8_t* sig, size_t cap, size_t& len) {
   WiFiClientSecure client;
   HTTPClient http;
-  if (!httpGetBegin(http, client, st.sigUrl)) return "Не вдалося завантажити підпис";
+  if (!httpGetBegin(http, client, sigUrl)) return "Не вдалося завантажити підпис";
   int code = http.GET();
   if (code != 200) {
     http.end();
@@ -166,7 +186,7 @@ static String doInstall() {
 
   WiFiClientSecure client;
   HTTPClient http;
-  if (!httpGetBegin(http, client, st.binUrl)) return "Не вдалося завантажити прошивку";
+  if (!httpGetBegin(http, client, binUrl)) return "Не вдалося завантажити прошивку";
   int code = http.GET();
   if (code != 200) {
     http.end();
@@ -255,6 +275,8 @@ bool inetUpdateInstall(String& err) {
     return false;
   }
   installError = "";
+  sigUrl = st.sigUrl;
+  binUrl = st.binUrl;
   progress = 0;
   phase = Phase::Downloading;
   if (xTaskCreate(installTask, "inetupd", 12288, nullptr, 1, nullptr) != pdPASS) {
@@ -279,7 +301,10 @@ void inetUpdateLoop() {
   if (!cfg.updAuto || phase == Phase::Downloading || phase == Phase::Verifying) return;
   if (WiFi.status() != WL_CONNECTED) return;
   bool due = st.checkedAt == 0 ? now > 60000UL : now - st.checkedAt > 24UL * 3600 * 1000;
-  if (due) inetUpdateCheck();
+  if (due && !checking) {
+    st.checkedAt = now | 1;  // don't retrigger while the task runs
+    inetUpdateCheckAsync();
+  }
 }
 
 void inetUpdateToJson(JsonObject o) {
@@ -287,6 +312,7 @@ void inetUpdateToJson(JsonObject o) {
   o["repo"] = GH_REPO;
   o["autoCheck"] = cfg.updAuto;
   o["checked"] = st.checkedAt != 0;
+  o["checking"] = (bool)checking;
   if (st.checkedAt) o["checkedAgo_s"] = (millis() - st.checkedAt) / 1000;
   o["latest"] = st.latest;
   o["available"] = st.available;
