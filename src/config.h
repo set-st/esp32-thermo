@@ -27,6 +27,7 @@ struct Config {
   // LCD
   uint8_t lcdAddr;   // 0 = autodetect
   uint8_t lcdCols, lcdRows;
+  uint8_t lcdCharset;  // 1 = Cyrillic ROM, 0 = ROM A00 (transliteration)
   // Encoder
   bool encReverse;
   uint8_t encStepsPerDetent;  // 1, 2 or 4

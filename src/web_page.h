@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
-<html lang="ru"><head><meta charset="utf-8">
+<html lang="uk"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ThermoHub</title>
 <style>
@@ -48,27 +48,27 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
 <nav id="nav">
-<button data-t="mon" class="on">Мониторинг</button><button data-t="ds">Термодатчики</button>
-<button data-t="pins">Пины</button><button data-t="wifi">Wi‑Fi</button><button data-t="sys">Система</button>
+<button data-t="mon" class="on">Моніторинг</button><button data-t="ds">Термодатчики</button>
+<button data-t="pins">Піни</button><button data-t="wifi">Wi‑Fi</button><button data-t="sys">Система</button>
 </nav>
 <main>
 
 <section id="t-mon">
- <div id="demoBar" class="hide">⚠ Демо-режим: показания DS18B20 эмулируются. Выключить — вкладка «Термодатчики».</div>
+ <div id="demoBar" class="hide">⚠ Демо-режим: показники DS18B20 емулюються. Вимкнути — вкладка «Термодатчики».</div>
  <div class="card"><h3>Дисплей <span class="mut" id="lcdInfo"></span></h3>
   <div class="lcdwrap" id="lcdwrap">
    <div class="lcd"><canvas id="lcd" role="img"></canvas></div>
    <div class="enc">
-    <button data-in='{"turn":-1}' title="Повернуть влево">⟲</button>
-    <button data-in='{"press":"click"}' title="Клик">●</button>
-    <button data-in='{"turn":1}' title="Повернуть вправо">⟳</button>
-    <button class="wide" data-in='{"press":"long"}'>Долгое нажатие (меню коррекции)</button>
+    <button data-in='{"turn":-1}' title="Повернути вліво">⟲</button>
+    <button data-in='{"press":"click"}' title="Клік">●</button>
+    <button data-in='{"turn":1}' title="Повернути вправо">⟳</button>
+    <button class="wide" data-in='{"press":"long"}'>Довге натискання (меню корекції)</button>
    </div>
   </div>
  </div>
  <div class="grid" id="monDs"></div>
  <div class="grid">
-  <div class="card"><h3>AHT20</h3><div class="big" id="ahtT">—</div><div class="mut">влажность <span id="ahtH">—</span></div></div>
+  <div class="card"><h3>AHT20</h3><div class="big" id="ahtT">—</div><div class="mut">вологість <span id="ahtH">—</span></div></div>
   <div class="card"><h3>BMP280</h3><div class="big" id="bmpP">—</div><div class="mut"><span id="bmpHpa">—</span> · <span id="bmpT">—</span></div></div>
  </div>
  <div class="card mut">API: <code>GET /api/sensors</code> (JSON) · <code>GET /metrics</code> (Prometheus) · <code>POST /api/offset {"slot":1,"offset":-0.3}</code></div>
@@ -76,60 +76,61 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 
 <section id="t-ds" class="hide"><div class="card">
  <h3>Датчики DS18B20</h3>
- <label class="sw"><input type="checkbox" id="demo"><i></i>Демо-режим (эмуляция 4 датчиков, пока реальные не подключены)</label>
- <table><thead><tr><th>#</th><th>Имя</th><th>Адрес на шине</th><th>Коррекция, °C</th><th>Сырое → итог</th></tr></thead><tbody id="dsTbl"></tbody></table>
- <button class="btn sec" id="owScan">Сканировать шину</button><button class="btn" id="dsSave">Сохранить</button>
+ <label class="sw"><input type="checkbox" id="demo"><i></i>Демо-режим (емуляція 4 датчиків, поки справжні не підключені)</label>
+ <table><thead><tr><th>#</th><th>Ім'я</th><th>Адреса на шині</th><th>Корекція, °C</th><th>Сире → підсумок</th></tr></thead><tbody id="dsTbl"></tbody></table>
+ <button class="btn sec" id="owScan">Сканувати шину</button><button class="btn" id="dsSave">Зберегти</button>
  <div class="mut" id="owRes"></div>
- <p class="mut">Новые датчики при загрузке сами занимают пустые слоты. Коррекцию можно менять и с энкодера: долгое нажатие → выбор T1..T4 → клик → крутить → клик (сохранить).</p>
+ <p class="mut">Нові датчики під час завантаження самі займають порожні слоти. Корекцію можна змінювати і з енкодера: довге натискання → вибір T1..T4 → клік → крутити → клік (зберегти).</p>
 </div></section>
 
 <section id="t-pins" class="hide"><div class="card">
- <h3>Назначение GPIO</h3>
+ <h3>Призначення GPIO</h3>
  <div class="row">
   <div><label>I2C SDA</label><select id="p_sda" data-out></select></div>
   <div><label>I2C SCL</label><select id="p_scl" data-out></select></div>
   <div><label>1‑Wire (DS18B20)</label><select id="p_onewire" data-out></select></div>
   <div></div>
-  <div><label>Энкодер A (CLK)</label><select id="p_encA" data-opt></select></div>
-  <div><label>Энкодер B (DT)</label><select id="p_encB" data-opt></select></div>
-  <div><label>Кнопка энкодера (SW)</label><select id="p_encBtn" data-opt></select></div>
+  <div><label>Енкодер A (CLK)</label><select id="p_encA" data-opt></select></div>
+  <div><label>Енкодер B (DT)</label><select id="p_encB" data-opt></select></div>
+  <div><label>Кнопка енкодера (SW)</label><select id="p_encBtn" data-opt></select></div>
  </div>
- <p class="mut">⚠ — strapping‑пины (0, 2, 5, 12, 15): могут мешать загрузке. GPIO34–39 только вход и без подтяжки — для энкодера нужны внешние резисторы 10к на 3.3В. На 1‑Wire нужен резистор 4.7к на 3.3В.</p>
- <h3>Дисплей и энкодер</h3>
+ <p class="mut">⚠ — strapping‑піни (0, 2, 5, 12, 15): можуть заважати завантаженню. GPIO34–39 лише вхід і без підтяжки — для енкодера потрібні зовнішні резистори 10к на 3.3В. На 1‑Wire потрібен резистор 4.7к на 3.3В.</p>
+ <h3>Дисплей і енкодер</h3>
  <div class="row">
-  <div><label>Адрес LCD (hex, 0 = авто)</label><input id="lcdAddr"></div>
-  <div><label>Размер LCD</label><select id="lcdSize"><option value="20x4">20×4</option><option value="16x4">16×4</option><option value="16x2">16×2</option><option value="20x2">20×2</option></select></div>
-  <div><label>Шагов энкодера на щелчок</label><select id="encSteps"><option>4</option><option>2</option><option>1</option></select></div>
-  <div><label><input type="checkbox" id="encRev"> Инвертировать направление</label></div>
+  <div><label>Адреса LCD (hex, 0 = авто)</label><input id="lcdAddr"></div>
+  <div><label>Шрифт дисплея</label><select id="lcdCharset"><option value="0">Латиниця (транслітерація)</option><option value="1">Кирилиця (дисплей з кириличним ROM)</option></select></div>
+  <div><label>Розмір LCD</label><select id="lcdSize"><option value="20x4">20×4</option><option value="16x4">16×4</option><option value="16x2">16×2</option><option value="20x2">20×2</option></select></div>
+  <div><label>Кроків енкодера на клацання</label><select id="encSteps"><option>4</option><option>2</option><option>1</option></select></div>
+  <div><label><input type="checkbox" id="encRev"> Інвертувати напрямок</label></div>
  </div>
- <button class="btn sec" id="i2cScan">Сканировать I2C</button><button class="btn" id="pinsSave">Сохранить и перезагрузить</button>
+ <button class="btn sec" id="i2cScan">Сканувати I2C</button><button class="btn" id="pinsSave">Зберегти і перезавантажити</button>
  <div class="mut" id="i2cRes"></div>
 </div></section>
 
 <section id="t-wifi" class="hide"><div class="card">
  <h3>Wi‑Fi</h3>
  <div id="wStat" class="mut"></div>
- <label>Сеть (SSID)</label><input id="ssid"><div id="nets"></div>
- <label>Пароль</label><input id="wpass" type="password" placeholder="(не менять)">
- <label>Имя хоста (mDNS: имя.local)</label><input id="hostname">
- <label>Пароль точки доступа (мин. 8 символов, пусто = открытая)</label><input id="appass" type="password" placeholder="(не менять)">
- <button class="btn sec" id="wScan">Найти сети</button><button class="btn" id="wSave">Сохранить и перезагрузить</button>
- <p class="mut">Если устройство не подключится к сети за 20 с, оно поднимет точку доступа <b id="apName"></b> (адрес 192.168.4.1). Чтобы включить её принудительно, держите кнопку энкодера при включении питания.</p>
+ <label>Мережа (SSID)</label><input id="ssid"><div id="nets"></div>
+ <label>Пароль</label><input id="wpass" type="password" placeholder="(не змінювати)">
+ <label>Ім'я хоста (mDNS: ім'я.local)</label><input id="hostname">
+ <label>Пароль точки доступу (мін. 8 символів, порожньо = відкрита)</label><input id="appass" type="password" placeholder="(не змінювати)">
+ <button class="btn sec" id="wScan">Знайти мережі</button><button class="btn" id="wSave">Зберегти і перезавантажити</button>
+ <p class="mut">Якщо пристрій не підключиться до мережі за 20 с, він підніме точку доступу <b id="apName"></b> (адреса 192.168.4.1). Щоб увімкнути її примусово, тримайте кнопку енкодера під час увімкнення живлення.</p>
 </div></section>
 
 <section id="t-sys" class="hide">
- <div class="card"><h3>Общие</h3>
+ <div class="card"><h3>Загальні</h3>
   <div class="row">
-   <div><label>Интервал опроса, мс</label><input id="poll" type="number" min="1000" max="60000" step="500"></div>
-   <div><label>Давление на LCD</label><select id="punit"><option value="1">мм рт. ст.</option><option value="0">гПа</option></select></div>
+   <div><label>Інтервал опитування, мс</label><input id="poll" type="number" min="1000" max="60000" step="500"></div>
+   <div><label>Тиск на LCD</label><select id="punit"><option value="1">мм рт. ст.</option><option value="0">гПа</option></select></div>
   </div>
-  <button class="btn" id="sysSave">Сохранить</button>
+  <button class="btn" id="sysSave">Зберегти</button>
  </div>
- <div class="card"><h3>Обновление прошивки</h3>
-  <input type="file" id="fw" accept=".bin"><button class="btn" id="fwBtn">Загрузить</button> <span id="fwSt" class="mut"></span>
+ <div class="card"><h3>Оновлення прошивки</h3>
+  <input type="file" id="fw" accept=".bin"><button class="btn" id="fwBtn">Завантажити</button> <span id="fwSt" class="mut"></span>
  </div>
- <div class="card"><h3>Устройство</h3><div id="info" class="mut"></div>
-  <button class="btn sec" id="reboot">Перезагрузить</button><button class="btn red" id="reset">Сброс настроек</button>
+ <div class="card"><h3>Пристрій</h3><div id="info" class="mut"></div>
+  <button class="btn sec" id="reboot">Перезавантажити</button><button class="btn red" id="reset">Скидання налаштувань</button>
  </div>
 </section>
 </main>
@@ -154,87 +155,88 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 
 async function save(part,msg){
   try{const r=await api('/api/config',part);
-    if(r.reboot){toast('Сохранено, перезагрузка…',9000);setTimeout(()=>location.reload(),9000)}
-    else{toast(msg||'Сохранено');await loadCfg()}
-  }catch(e){toast('Ошибка: '+e.message,5000)}}
+    if(r.reboot){toast('Збережено, перезавантаження…',9000);setTimeout(()=>location.reload(),9000)}
+    else{toast(msg||'Збережено');await loadCfg()}
+  }catch(e){toast('Помилка: '+e.message,5000)}}
 
 function fillPins(){
   document.querySelectorAll('select[data-out],select[data-opt]').forEach(s=>{
-    const out=s.hasAttribute('data-out');let h=out?'':'<option value="-1">не используется</option>';
-    PINS.filter(p=>!out||p<34).forEach(p=>h+=`<option value="${p}">GPIO${p}${STRAP.includes(p)?' ⚠':''}${p>=34?' (вход)':''}</option>`);
+    const out=s.hasAttribute('data-out');let h=out?'':'<option value="-1">не використовується</option>';
+    PINS.filter(p=>!out||p<34).forEach(p=>h+=`<option value="${p}">GPIO${p}${STRAP.includes(p)?' ⚠':''}${p>=34?' (вхід)':''}</option>`);
     s.innerHTML=h})}
 
 function renderDs(){
   let h='';
   C.ds.forEach((d,i)=>{
     const addrs=new Set([d.addr,...owFound.map(x=>x.addr)].filter(Boolean));
-    let opt='<option value="">— пусто —</option>';addrs.forEach(a=>opt+=`<option ${a==d.addr?'selected':''}>${a}</option>`);
+    let opt='<option value="">— порожньо —</option>';addrs.forEach(a=>opt+=`<option ${a==d.addr?'selected':''}>${a}</option>`);
     h+=`<tr><td>T${i+1}</td><td><input id="dn${i}" value="${d.name.replace(/"/g,'&quot;')}" maxlength="30"></td>
     <td><select id="da${i}">${opt}</select></td>
     <td><input id="do${i}" type="number" step="0.1" min="-20" max="20" value="${d.offset}"></td><td id="dv${i}">—</td></tr>`});
   $('dsTbl').innerHTML=h;updDsLive()}
-function updDsLive(){if(!S||!C)return;S.ds18b20.forEach((d,i)=>{const e=$('dv'+i);if(e)e.textContent=d.ok?`${f1(d.raw)} → ${f1(d.temp)}`:'нет связи'})}
+function updDsLive(){if(!S||!C)return;S.ds18b20.forEach((d,i)=>{const e=$('dv'+i);if(e)e.textContent=d.ok?`${f1(d.raw)} → ${f1(d.temp)}`:'немає зв\'язку'})}
 
 async function loadCfg(){
   const r=await api('/api/config');C=r.config;I=r.info;
   renderDs();
   const p=C.pins;['sda','scl','onewire','encA','encB','encBtn'].forEach(k=>$('p_'+k).value=p[k]);
   $('lcdAddr').value=C.lcd.addr?C.lcd.addr.toString(16):'0';$('lcdSize').value=C.lcd.cols+'x'+C.lcd.rows;
-  $('encSteps').value=C.encoder.stepsPerDetent;$('encRev').checked=C.encoder.reverse;
+  $('lcdCharset').value=C.lcd.charset;$('encSteps').value=C.encoder.stepsPerDetent;$('encRev').checked=C.encoder.reverse;
   $('ssid').value=C.wifi.ssid;$('hostname').value=C.wifi.hostname;$('apName').textContent=I.apSsid;
-  $('wStat').innerHTML=I.staConnected?'<span class="ok">● Подключено к '+C.wifi.ssid+', IP '+I.ip+'</span>':(C.wifi.ssid?'<span class="bad">● Нет подключения к '+C.wifi.ssid+(I.staProblem?': '+I.staProblem:'')+'</span>':'Сеть не настроена');
+  $('wStat').innerHTML=I.staConnected?'<span class="ok">● Підключено до '+C.wifi.ssid+', IP '+I.ip+'</span>':(C.wifi.ssid?'<span class="bad">● Немає підключення до '+C.wifi.ssid+(I.staProblem?': '+I.staProblem:'')+'</span>':'Мережу не налаштовано');
   $('demo').checked=C.dsDemo;$('poll').value=C.pollMs;$('punit').value=C.pressUnit;
   ['wpass','appass'].forEach(id=>{$(id).value='';dirty.delete(id)});
-  $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не найден'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не найден'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} мин`;
+  $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не знайдено'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не знайдено'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} хв`;
 }
 
 async function poll(){
   try{S=await api('/api/sensors');
-    let h='';S.ds18b20.forEach(d=>h+=`<div class="card"><h3>${d.name}${d.demo?'<span class="badge">ДЕМО</span>':''}</h3><div class="big ${d.ok?'':'bad'}">${d.ok?f1(d.temp)+' °C':'нет связи'}</div><div class="mut">${d.demo?'эмуляция':(d.addr||'слот пуст')}${d.offset?` · корр. ${d.offset>0?'+':''}${d.offset}`:''}</div></div>`);
+    let h='';S.ds18b20.forEach(d=>h+=`<div class="card"><h3>${d.name}${d.demo?'<span class="badge">ДЕМО</span>':''}</h3><div class="big ${d.ok?'':'bad'}">${d.ok?f1(d.temp)+' °C':'немає зв\'язку'}</div><div class="mut">${d.demo?'емуляція':(d.addr||'слот порожній')}${d.offset?` · кор. ${d.offset>0?'+':''}${d.offset}`:''}</div></div>`);
     $('monDs').innerHTML=h;$('demoBar').classList.toggle('hide',!S.demo);
     const a=S.aht20,b=S.bmp280;
-    $('ahtT').textContent=a.ok?f1(a.temp)+' °C':'нет данных';$('ahtH').textContent=a.ok?f1(a.humidity)+' %':'—';
-    $('bmpP').textContent=b.ok?f1(b.pressure_mmhg)+' мм':'нет данных';$('bmpHpa').textContent=b.ok?f1(b.pressure_hpa)+' гПа':'—';$('bmpT').textContent=b.ok?f1(b.temp)+' °C':'—';
-    $('st').textContent=(S.wifi.connected?`${S.wifi.ip} · ${S.wifi.rssi} dBm`:`точка доступа ${S.wifi.ip}`)+` · ${Math.round(S.uptime_s/60)} мин`;
+    $('ahtT').textContent=a.ok?f1(a.temp)+' °C':'немає даних';$('ahtH').textContent=a.ok?f1(a.humidity)+' %':'—';
+    $('bmpP').textContent=b.ok?f1(b.pressure_mmhg)+' мм':'немає даних';$('bmpHpa').textContent=b.ok?f1(b.pressure_hpa)+' гПа':'—';$('bmpT').textContent=b.ok?f1(b.temp)+' °C':'—';
+    $('st').textContent=(S.wifi.connected?`${S.wifi.ip} · ${S.wifi.rssi} dBm`:`точка доступу ${S.wifi.ip}`)+` · ${Math.round(S.uptime_s/60)} хв`;
     updDsLive();
-  }catch(e){$('st').textContent='нет связи с устройством'}}
+  }catch(e){$('st').textContent='немає зв\'язку з пристроєм'}}
 
-$('demo').onchange=e=>save({dsDemo:e.target.checked},e.target.checked?'Демо-режим включён':'Демо-режим выключен');
+$('demo').onchange=e=>save({dsDemo:e.target.checked},e.target.checked?'Демо-режим увімкнено':'Демо-режим вимкнено');
 $('owScan').onclick=async()=>{try{owFound=(await api('/api/scan/onewire')).found;
-  $('owRes').textContent=owFound.length?'Найдено: '+owFound.map(x=>x.addr+(x.slot?` (T${x.slot})`:' (не назначен)')).join(', '):'Датчики не найдены';renderDs()}catch(e){toast(e.message)}};
+  $('owRes').textContent=owFound.length?'Знайдено: '+owFound.map(x=>x.addr+(x.slot?` (T${x.slot})`:' (не призначено)')).join(', '):'Датчики не знайдено';renderDs()}catch(e){toast(e.message)}};
 $('dsSave').onclick=()=>{
   const ds=C.ds.map((_,i)=>({name:$('dn'+i).value,addr:$('da'+i).value,offset:parseFloat($('do'+i).value)||0}));
-  const used=ds.map(d=>d.addr).filter(Boolean);if(new Set(used).size!=used.length)return toast('Один датчик назначен в два слота');
+  const used=ds.map(d=>d.addr).filter(Boolean);if(new Set(used).size!=used.length)return toast('Один датчик призначено у два слоти');
   save({ds})};
 $('i2cScan').onclick=async()=>{try{const f=(await api('/api/scan/i2c')).found;
   const n={0x27:'LCD',0x3f:'LCD',0x38:'AHT20',0x76:'BMP280',0x77:'BMP280'};
-  $('i2cRes').textContent=f.length?'Найдено: '+f.map(a=>'0x'+a.toString(16)+(n[a]?` (${n[a]})`:'')).join(', '):'Ничего не найдено'}catch(e){toast(e.message)}};
+  $('i2cRes').textContent=f.length?'Знайдено: '+f.map(a=>'0x'+a.toString(16)+(n[a]?` (${n[a]})`:'')).join(', '):'Нічого не знайдено'}catch(e){toast(e.message)}};
 $('pinsSave').onclick=()=>{
   const pins={};['sda','scl','onewire','encA','encB','encBtn'].forEach(k=>pins[k]=parseInt($('p_'+k).value));
   const [cols,rows]=$('lcdSize').value.split('x').map(Number);const addr=parseInt($('lcdAddr').value||'0',16);
-  if(isNaN(addr))return toast('Неверный адрес LCD');
-  save({pins,lcd:{addr,cols,rows},encoder:{stepsPerDetent:+$('encSteps').value,reverse:$('encRev').checked}})};
+  if(isNaN(addr))return toast('Невірна адреса LCD');
+  save({pins,lcd:{addr,cols,rows,charset:+$('lcdCharset').value},encoder:{stepsPerDetent:+$('encSteps').value,reverse:$('encRev').checked}})};
 function bars(r){return r>=-55?'▂▄▆█':r>=-67?'▂▄▆_':r>=-75?'▂▄__':'▂___'}
-$('wScan').onclick=async()=>{const b=$('wScan');b.disabled=true;b.textContent='Поиск…';$('nets').innerHTML='';
+$('wScan').onclick=async()=>{const b=$('wScan');b.disabled=true;b.textContent='Пошук…';$('nets').innerHTML='';
   try{const n=(await api('/api/scan/wifi')).networks;
-    if(!n.length)$('nets').innerHTML='<div class="mut">Сети не найдены</div>';
+    if(!n.length)$('nets').innerHTML='<div class="mut">Мережі не знайдено</div>';
     n.forEach(x=>{const e=document.createElement('button');e.type='button';
-      e.innerHTML=`<span></span><span class="mut">${bars(x.rssi)} ${x.rssi} dBm · кан. ${x.channel}${x.open?' · открытая':' · 🔒'}</span>`;
+      e.innerHTML=`<span></span><span class="mut">${bars(x.rssi)} ${x.rssi} dBm · кан. ${x.channel}${x.open?' · відкрита':' · 🔒'}</span>`;
       e.firstChild.textContent=x.ssid;
       e.onclick=()=>{$('ssid').value=x.ssid;$('nets').innerHTML='';$('wpass').focus()};$('nets').appendChild(e)});
-  }catch(e){toast('Сканирование: '+e.message,5000)}b.disabled=false;b.textContent='Найти сети'};
+  }catch(e){toast('Сканування: '+e.message,5000)}b.disabled=false;b.textContent='Знайти мережі'};
 $('wSave').onclick=()=>{const w={ssid:$('ssid').value,hostname:$('hostname').value};
   if(dirty.has('wpass'))w.pass=$('wpass').value;if(dirty.has('appass'))w.apPass=$('appass').value;
-  if(!w.hostname)return toast('Укажите имя хоста');save({wifi:w})};
+  if(!w.hostname)return toast('Вкажіть ім\'я хоста');save({wifi:w})};
 $('sysSave').onclick=()=>save({pollMs:+$('poll').value,pressUnit:+$('punit').value});
-$('reboot').onclick=async()=>{if(!confirm('Перезагрузить?'))return;await api('/api/reboot',{});toast('Перезагрузка…',8000);setTimeout(()=>location.reload(),8000)};
-$('reset').onclick=async()=>{if(!confirm('Сбросить ВСЕ настройки, включая Wi‑Fi?'))return;await api('/api/factory-reset',{});toast('Сброшено. Подключитесь к точке доступа устройства.',10000)};
+$('reboot').onclick=async()=>{if(!confirm('Перезавантажити?'))return;await api('/api/reboot',{});toast('Перезавантаження…',8000);setTimeout(()=>location.reload(),8000)};
+$('reset').onclick=async()=>{if(!confirm('Скинути ВСІ налаштування, включно з Wi‑Fi?'))return;await api('/api/factory-reset',{});toast('Скинуто. Підключіться до точки доступу пристрою.',10000)};
 $('fwBtn').onclick=()=>{const f=$('fw').files[0];if(!f)return;const fd=new FormData();fd.append('fw',f);
   const x=new XMLHttpRequest();x.open('POST','/update');x.upload.onprogress=e=>$('fwSt').textContent=Math.round(e.loaded/e.total*100)+'%';
-  x.onload=()=>{if(x.status==200){$('fwSt').textContent='Готово, перезагрузка…';setTimeout(()=>location.reload(),10000)}else $('fwSt').textContent='Ошибка: '+x.responseText};x.send(fd)};
+  x.onload=()=>{if(x.status==200){$('fwSt').textContent='Готово, перезавантаження…';setTimeout(()=>location.reload(),10000)}else $('fwSt').textContent='Помилка: '+x.responseText};x.send(fd)};
 
 const FONT='000000000000005F00000007000700147F147F14242A7F2A12231308646236495522500005030000001C2241000041221C0014083E081408083E080800503000000808080808006060000020100804023E5149453E00427F400042615149462141454B311814127F1027454545393C4A49493001710905033649494936064949291E003636000000563600000814224100141414141400412214080201510906324979413E7E1111117E7F494949363E414141227F4141221C7F494949417F090901013E414151327F0808087F00417F41002040413F017F081422417F404040407F0204027F7F0408107F3E4141413E7F090909063E4151215E7F09192946464949493101017F01013F4040403F1F2040201F7F2018207F631408146303047804036151494543007F41410002040810200041417F0004020102044040404040000102040020545454787F484444383844444420384444487F3854545418087E0901020C5252523E7F0804047800447D40002040443D007F1028440000417F40007C041804787C0804047838444444387C14141408081414187C7C080404084854545420043F4440203C4040207C1C2040201C3C4030403C44281028440C5050503C4464544C44000836410000007F000000413608000804081008',DEGG='0705070000';
-function glyph(ch){const c=ch.charCodeAt(0);if(ch=='°')return DEGG;if(c<32||c>126)return FONT.substr(('?'.charCodeAt(0)-32)*10,10);return FONT.substr((c-32)*10,10)}
+const CYR={'Б':'7F49494931','Г':'7F01010101','Ё':'7C55545544','Ж':'77087F0877','З':'2241494936','И':'7F1008047F','Й':'7C2111097C','Л':'403E01017F','П':'7F0101017F','У':'274848483F','Ф':'1C227F221C','Ч':'070808087F','Ш':'7F407F407F','Ъ':'017F484830','Ы':'7F4830007F','Э':'224149493E','Ю':'7F083E413E','Я':'462919097F','Д':'603E213F60','Ц':'3F20203F60','Щ':'3F203F207F','б':'3C4A4A4931','в':'7C54545428','г':'7C04040404','ё':'3855545518','ж':'6C107C106C','з':'4444545428','и':'7C2010087C','й':'7C2112097C','к':'7C10284400','л':'403804047C','м':'7C0810087C','н':'7C1010107C','п':'7C0404047C','т':'04047C0404','ч':'0C1010107C','ш':'7C407C407C','ъ':'047C505020','ы':'7C5050207C','ь':'7C50505020','э':'2844545438','ю':'7C10384438','я':'483414147C','д':'6038243C60','ф':'18247E2418','ц':'3C20203C60','щ':'3C203C207C','Є':'3E49494922','є':'3854544400','Ї':'00457C4500','ї':'00457C4100','Ґ':'7E02020203','ґ':'7C04040406'};
+function glyph(ch){const c=ch.charCodeAt(0);if(ch=='°')return DEGG;if(CYR[ch])return CYR[ch];if(c<32||c>126)return FONT.substr(('?'.charCodeAt(0)-32)*10,10);return FONT.substr((c-32)*10,10)}
 // HD44780-like dot matrix: 5x8 dots per cell, 1-dot gaps, unlit dots faintly visible
 function drawLcd(cv,lines,cols,rows,on){
   const box=cv.closest('.card').clientWidth-60, pitch=Math.max(2,Math.min(6,Math.floor(box/(cols*6+1))));
@@ -252,7 +254,7 @@ function drawLcd(cv,lines,cols,rows,on){
 let lastLcd=null;
 function renderLcd(j){lastLcd=j;const cv=$('lcd');cv.parentElement.style.background=j.present?'#1a44c8':'#2b3550';
   drawLcd(cv,j.lines,j.cols,j.rows,true);
-  $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · физический дисплей не найден, показан эмулятор')}
+  $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · фізичний дисплей не знайдено, показано емулятор')}
 window.addEventListener('resize',()=>lastLcd&&renderLcd(lastLcd));
 let lcdBusy=false;
 async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))return;lcdBusy=true;

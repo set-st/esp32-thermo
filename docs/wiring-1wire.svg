@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 760" width="960" height="760" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif">
 <rect width="960" height="760" fill="#fff"/>
-<text x="40" y="42" font-size="22" font-weight="600" fill="#222">Подключение 4×DS18B20 к ESP32 по 1-Wire</text>
-<text x="40" y="66" font-size="14" fill="#666">Одна общая шина, обычное (не паразитное) питание 3.3 В, один подтягивающий резистор</text>
+<text x="40" y="42" font-size="22" font-weight="600" fill="#222">Підключення 4×DS18B20 до ESP32 по 1-Wire</text>
+<text x="40" y="66" font-size="14" fill="#666">Одна спільна шина, звичайне (не паразитне) живлення 3.3 В, один підтягувальний резистор</text>
 <rect x="40" y="96" width="170" height="244" rx="10" fill="#eef3fb" stroke="#4a6fa5" stroke-width="2"/>
 <text x="60" y="124" font-size="18" font-weight="600" fill="#1f3b63">ESP32</text>
 <text x="60" y="324" font-size="12" fill="#666">WROOM-32</text>
@@ -11,8 +11,8 @@
 <circle cx="210" cy="220" r="4" fill="#e0a100"/>
 <text x="196" y="295" font-size="15" font-weight="600" text-anchor="end" fill="#222">GND</text>
 <circle cx="210" cy="290" r="4" fill="#222"/>
-<text x="60" y="244" font-size="11" fill="#666">(пин меняется</text>
-<text x="60" y="258" font-size="11" fill="#666">в админке)</text>
+<text x="60" y="244" font-size="11" fill="#666">(пін змінюється</text>
+<text x="60" y="258" font-size="11" fill="#666">в адмінці)</text>
 <line x1="210" y1="150" x2="910" y2="150" stroke="#d32f2f" stroke-width="4" stroke-linecap="round"/>
 <text x="910" y="140" font-size="13" text-anchor="end" fill="#d32f2f" font-weight="600">VDD  +3.3 В</text>
 <line x1="210" y1="220" x2="910" y2="220" stroke="#e0a100" stroke-width="4" stroke-linecap="round"/>
@@ -74,17 +74,17 @@
 <text x="792" y="450" font-size="11" text-anchor="middle" fill="#666">1</text>
 <text x="820" y="450" font-size="11" text-anchor="middle" fill="#666">2</text>
 <text x="848" y="450" font-size="11" text-anchor="middle" fill="#666">3</text>
-<text x="340" y="450" font-size="11" text-anchor="end" fill="#666">ножки:</text>
+<text x="340" y="450" font-size="11" text-anchor="end" fill="#666">ніжки:</text>
 <rect x="40" y="480" width="880" height="260" rx="10" fill="#fafafa" stroke="#ddd"/>
-<text x="60" y="510" font-size="15" font-weight="600" fill="#222">Выводы и цвета проводов</text>
-<text x="60" y="534" font-size="13" font-weight="600" fill="#222">Корпус TO-92 (плоской стороной к себе, ножки вниз): 1 — GND, 2 — DQ, 3 — VDD.</text>
-<text x="60" y="554" font-size="13" font-weight="600" fill="#222">Датчик в гильзе с кабелем: красный — VDD, чёрный — GND, жёлтый/белый — DATA.</text>
-<text x="60" y="574" font-size="13" fill="#333">У части дешёвых кабелей цвета другие — сверьтесь с описанием или прозвоните.</text>
-<text x="60" y="598" font-size="15" font-weight="600" fill="#222">Советы</text>
-<text x="60" y="622" font-size="13" fill="#333">• Питание только 3.3 В: линия DATA подтянута к питанию и идёт прямо на GPIO ESP32 (не 5 В!).</text>
-<text x="60" y="642" font-size="13" fill="#333">• Все датчики параллельно на одной линии («шина»); длинные отводы-«звёзды» работают хуже.</text>
-<text x="60" y="662" font-size="13" fill="#333">• В кабеле используйте витую пару: DATA в паре с GND.</text>
-<text x="60" y="682" font-size="13" fill="#333">• Кабели длиннее 10–15 м или сбои чтения — уменьшите подтяжку до 2.2 кОм;</text>
-<text x="72" y="702" font-size="13" fill="#333">у датчика можно поставить конденсатор 100 нФ между VDD и GND.</text>
-<text x="60" y="722" font-size="13" fill="#333">• Порядок не важен: датчики различаются по уникальному адресу, слот T1…T4 назначается в админке.</text>
+<text x="60" y="510" font-size="15" font-weight="600" fill="#222">Виводи та кольори проводів</text>
+<text x="60" y="534" font-size="13" font-weight="600" fill="#222">Корпус TO-92 (пласкою стороною до себе, ніжки донизу): 1 — GND, 2 — DQ, 3 — VDD.</text>
+<text x="60" y="554" font-size="13" font-weight="600" fill="#222">Датчик у гільзі з кабелем: червоний — VDD, чорний — GND, жовтий/білий — DATA.</text>
+<text x="60" y="574" font-size="13" fill="#333">У частини дешевих кабелів кольори інші — звіртеся з описом або продзвоніть.</text>
+<text x="60" y="598" font-size="15" font-weight="600" fill="#222">Поради</text>
+<text x="60" y="622" font-size="13" fill="#333">• Живлення лише 3.3 В: лінія DATA підтягнута до живлення й іде прямо на GPIO ESP32 (не 5 В!).</text>
+<text x="60" y="642" font-size="13" fill="#333">• Усі датчики паралельно на одній лінії («шина»); довгі відгалуження-«зірки» працюють гірше.</text>
+<text x="60" y="662" font-size="13" fill="#333">• У кабелі використовуйте виту пару: DATA в парі з GND.</text>
+<text x="60" y="682" font-size="13" fill="#333">• Кабелі довші за 10–15 м або збої читання — зменште підтяжку до 2.2 кОм;</text>
+<text x="72" y="702" font-size="13" fill="#333">біля датчика можна поставити конденсатор 100 нФ між VDD і GND.</text>
+<text x="60" y="722" font-size="13" fill="#333">• Порядок не важливий: датчики розрізняються за унікальною адресою, слот T1…T4 призначається в адмінці.</text>
 </svg>

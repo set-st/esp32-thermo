@@ -125,15 +125,15 @@ const char* netStaProblem(bool shortText) {
     case WIFI_REASON_HANDSHAKE_TIMEOUT:
     case WIFI_REASON_AUTH_FAIL:
     case WIFI_REASON_MIC_FAILURE:
-      return shortText ? "Wrong password?" : "Роутер не принимает пароль — проверьте пароль Wi-Fi";
+      return shortText ? "Невірний пароль?" : "Роутер не приймає пароль — перевірте пароль Wi-Fi";
     case WIFI_REASON_NO_AP_FOUND:
-      return shortText ? "Network not found" : "Сеть не найдена (опечатка в имени или сеть только 5 ГГц)";
+      return shortText ? "Мережу не знайдено" : "Мережу не знайдено (помилка в назві або мережа лише 5 ГГц)";
     case WIFI_REASON_AUTH_EXPIRE:
     case WIFI_REASON_ASSOC_EXPIRE:
     case WIFI_REASON_BEACON_TIMEOUT:
-      return shortText ? "Weak signal?" : "Нет ответа от роутера — слабый сигнал?";
+      return shortText ? "Слабкий сигнал?" : "Роутер не відповідає — слабкий сигнал?";
     default:
-      return shortText ? "Connect failed" : "Ошибка подключения";
+      return shortText ? "Помилка зв'язку" : "Помилка підключення";
   }
 }
 static bool apForced = false;

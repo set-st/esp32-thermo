@@ -27,6 +27,7 @@ void configDefaults(Config& c) {
   c.lcdAddr = 0;
   c.lcdCols = 20;
   c.lcdRows = 4;
+  c.lcdCharset = 0;
   c.encReverse = false;
   c.encStepsPerDetent = 4;
   c.pollMs = 2000;
@@ -42,22 +43,22 @@ String validatePins(const Config& c) {
   struct P { const char* name; int pin; bool needOut; bool optional; };
   P pins[] = {
       {"I2C SDA", c.pinSda, true, false},     {"I2C SCL", c.pinScl, true, false},
-      {"1-Wire", c.pinOneWire, true, false},  {"Encoder A", c.pinEncA, false, true},
-      {"Encoder B", c.pinEncB, false, true},  {"Encoder button", c.pinEncBtn, false, true},
+      {"1-Wire", c.pinOneWire, true, false},  {"Енкодер A", c.pinEncA, false, true},
+      {"Енкодер B", c.pinEncB, false, true},  {"Кнопка енкодера", c.pinEncBtn, false, true},
   };
   const int n = sizeof(pins) / sizeof(pins[0]);
   for (int i = 0; i < n; i++) {
     if (pins[i].pin < 0) {
       if (pins[i].optional) continue;
-      return String(pins[i].name) + ": pin is required";
+      return String(pins[i].name) + ": пін обов'язковий";
     }
     if (!gpioValid(pins[i].pin))
-      return String(pins[i].name) + ": GPIO" + pins[i].pin + " is not usable";
+      return String(pins[i].name) + ": GPIO" + pins[i].pin + " не можна використовувати";
     if (pins[i].needOut && !gpioOutputCapable(pins[i].pin))
-      return String(pins[i].name) + ": GPIO" + pins[i].pin + " is input-only";
+      return String(pins[i].name) + ": GPIO" + pins[i].pin + " працює лише на вхід";
     for (int k = 0; k < i; k++)
       if (pins[k].pin == pins[i].pin)
-        return String(pins[i].name) + " and " + pins[k].name + " use the same GPIO" + pins[i].pin;
+        return String(pins[i].name) + " і " + pins[k].name + " на одному GPIO" + pins[i].pin;
   }
   return "";
 }
@@ -94,6 +95,7 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
   l["addr"] = c.lcdAddr;
   l["cols"] = c.lcdCols;
   l["rows"] = c.lcdRows;
+  l["charset"] = c.lcdCharset;
 
   JsonObject e = o["encoder"].to<JsonObject>();
   e["reverse"] = c.encReverse;
@@ -123,7 +125,7 @@ struct Merger {
     if (!v.is<const char*>()) return;
     const char* s = v.as<const char*>();
     if (strlen(s) >= cap) {
-      if (err.isEmpty()) err = String(field) + ": too long";
+      if (err.isEmpty()) err = String(field) + ": задовге значення";
       return;
     }
     if (strcmp(dst, s) != 0) {
@@ -137,7 +139,7 @@ struct Merger {
     if (!v.is<long>()) return;
     long x = v.as<long>();
     if (x < lo || x > hi) {
-      if (err.isEmpty()) err = String(field) + ": out of range";
+      if (err.isEmpty()) err = String(field) + ": поза допустимим діапазоном";
       return;
     }
     if ((long)dst != x) {
@@ -162,39 +164,40 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
 
   JsonVariantConst w = j["wifi"];
   m.str(c.ssid, sizeof(c.ssid), w["ssid"], true, "SSID");
-  m.str(c.pass, sizeof(c.pass), w["pass"], true, "Wi-Fi password");
-  m.str(c.hostname, sizeof(c.hostname), w["hostname"], true, "Hostname");
-  m.str(c.apPass, sizeof(c.apPass), w["apPass"], true, "AP password");
+  m.str(c.pass, sizeof(c.pass), w["pass"], true, "Пароль Wi-Fi");
+  m.str(c.hostname, sizeof(c.hostname), w["hostname"], true, "Ім'я хоста");
+  m.str(c.apPass, sizeof(c.apPass), w["apPass"], true, "Пароль точки доступу");
 
   JsonVariantConst p = j["pins"];
   m.num(c.pinSda, p["sda"], -1, 39, true, "SDA");
   m.num(c.pinScl, p["scl"], -1, 39, true, "SCL");
   m.num(c.pinOneWire, p["onewire"], -1, 39, true, "1-Wire");
-  m.num(c.pinEncA, p["encA"], -1, 39, true, "Encoder A");
-  m.num(c.pinEncB, p["encB"], -1, 39, true, "Encoder B");
-  m.num(c.pinEncBtn, p["encBtn"], -1, 39, true, "Encoder button");
+  m.num(c.pinEncA, p["encA"], -1, 39, true, "Енкодер A");
+  m.num(c.pinEncB, p["encB"], -1, 39, true, "Енкодер B");
+  m.num(c.pinEncBtn, p["encBtn"], -1, 39, true, "Кнопка енкодера");
 
   JsonVariantConst l = j["lcd"];
-  m.num(c.lcdAddr, l["addr"], 0, 0x7F, true, "LCD address");
+  m.num(c.lcdAddr, l["addr"], 0, 0x7F, true, "Адреса LCD");
   m.num(c.lcdCols, l["cols"], 8, 40, true, "LCD columns");
   m.num(c.lcdRows, l["rows"], 1, 4, true, "LCD rows");
+  m.num(c.lcdCharset, l["charset"], 0, 1, false, "LCD charset");
 
   JsonVariantConst e = j["encoder"];
   m.flag(c.encReverse, e["reverse"], false);
   m.num(c.encStepsPerDetent, e["stepsPerDetent"], 1, 4, false, "Steps per detent");
 
-  m.num(c.pollMs, j["pollMs"], 1000, 60000, false, "Poll interval");
+  m.num(c.pollMs, j["pollMs"], 1000, 60000, false, "Інтервал опитування");
   m.num(c.pressUnit, j["pressUnit"], 0, 1, false, "Pressure unit");
   m.flag(c.dsDemo, j["dsDemo"], false);
 
   JsonArrayConst ds = j["ds"];
   for (int i = 0; i < DS_COUNT && i < (int)ds.size(); i++) {
     JsonVariantConst s = ds[i];
-    m.str(c.ds[i].name, sizeof(c.ds[i].name), s["name"], false, "Sensor name");
+    m.str(c.ds[i].name, sizeof(c.ds[i].name), s["name"], false, "Назва датчика");
     if (s["addr"].is<const char*>()) {
       const char* a = s["addr"];
       if (!validAddr(a)) {
-        if (m.err.isEmpty()) m.err = "Sensor address must be 16 hex chars";
+        if (m.err.isEmpty()) m.err = "Адреса датчика — 16 шістнадцяткових символів";
       } else {
         strlcpy(c.ds[i].addr, a, sizeof(c.ds[i].addr));
         for (char* q = c.ds[i].addr; *q; q++) *q = toupper(*q);
@@ -203,7 +206,7 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
     if (s["offset"].is<float>()) {
       float o = s["offset"];
       if (isnan(o) || fabsf(o) > OFFSET_LIMIT) {
-        if (m.err.isEmpty()) m.err = "Offset must be within ±20";
+        if (m.err.isEmpty()) m.err = "Поправка має бути в межах ±20";
       } else {
         c.ds[i].offset = o;
       }

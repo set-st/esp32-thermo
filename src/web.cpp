@@ -110,14 +110,14 @@ static void handlePostConfig() {
   if (err.length()) return sendError(400, err);
 
   cfg = tmp;
-  if (!configSave()) return sendError(500, "Failed to save to flash");
+  if (!configSave()) return sendError(500, "Не вдалося записати у флеш-пам'ять");
 
   JsonDocument d;
   d["ok"] = true;
   d["reboot"] = reboot;
   sendJson(d);
   if (reboot) {
-    uiMessage("Config saved", "Rebooting...");
+    uiMessage("Збережено", "Перезапуск...");
     scheduleReboot(1500);
   }
 }
@@ -130,9 +130,9 @@ static void handleOffset() {
   if (slot < 1 || slot > DS_COUNT) return sendError(400, "slot must be 1..4");
   if (!body["offset"].is<float>()) return sendError(400, "offset required");
   float o = body["offset"];
-  if (isnan(o) || fabsf(o) > OFFSET_LIMIT) return sendError(400, "offset must be within ±20");
+  if (isnan(o) || fabsf(o) > OFFSET_LIMIT) return sendError(400, "Поправка має бути в межах ±20");
   cfg.ds[slot - 1].offset = o;
-  if (!configSave()) return sendError(500, "Failed to save to flash");
+  if (!configSave()) return sendError(500, "Не вдалося записати у флеш-пам'ять");
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
@@ -153,7 +153,7 @@ static void handleScanI2c() {
 static void handleScanWifi() {
   JsonDocument d;
   int n = netScan(d["networks"].to<JsonArray>());
-  if (n < 0) return sendError(503, "Wi-Fi scan failed, try again");
+  if (n < 0) return sendError(503, "Не вдалося сканувати Wi-Fi, спробуйте ще раз");
   sendJson(d);
 }
 
@@ -192,7 +192,7 @@ static void handleReboot() {
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
-  uiMessage("Rebooting...");
+  uiMessage("Перезапуск...");
   scheduleReboot();
 }
 
@@ -201,16 +201,16 @@ static void handleFactoryReset() {
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
-  uiMessage("Factory reset", "Rebooting...");
+  uiMessage("Скидання налашт.", "Перезапуск...");
   scheduleReboot();
 }
 
 static void handleOtaDone() {
-  if (Update.hasError()) return sendError(500, String("Update failed: ") + Update.errorString());
+  if (Update.hasError()) return sendError(500, String("Помилка оновлення: ") + Update.errorString());
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
-  uiMessage("Update OK", "Rebooting...");
+  uiMessage("Оновлено", "Перезапуск...");
   scheduleReboot();
 }
 
@@ -218,7 +218,7 @@ static void handleOtaUpload() {
   HTTPUpload& u = server.upload();
   if (u.status == UPLOAD_FILE_START) {
     Serial.printf("[ota] %s\n", u.filename.c_str());
-    uiMessage("Updating...");
+    uiMessage("Оновлення...");
     Update.begin(UPDATE_SIZE_UNKNOWN);
   } else if (u.status == UPLOAD_FILE_WRITE) {
     if (Update.write(u.buf, u.currentSize) != u.currentSize) Update.printError(Serial);

@@ -30,7 +30,148 @@ static float editOffset = 0;
 static uint32_t lastInput = 0, lastDraw = 0, msgUntil = 0;
 static bool dirty = true;
 
-static constexpr char DEG = (char)0xDF;  // degree sign in HD44780 ROM A00
+// ---- character encoding ------------------------------------------------------
+// All LCD texts are written in UTF-8 Russian and converted to the display's
+// character ROM:
+//   charset 1 (default): HD44780 clone with Cyrillic ROM (Б=0xA0, Г=0xA1, ...);
+//            letters that look like Latin ones (А, В, Е, К, М, Н, О, Р, С, Т, Х ...)
+//            use the Latin glyphs, exactly like Cyrillic LCD fonts are designed.
+//   charset 0: standard ROM A00 without Cyrillic -> transliteration.
+static constexpr uint8_t DEG_A00 = 0xDF, DEG_CYR = 0xEF;
+#define DEG ((char)(cfg.lcdCharset == 1 ? DEG_CYR : DEG_A00))
+
+// U+0410..U+042F (А..Я) and U+0430..U+044F (а..я) -> ROM code
+static const uint8_t CYR_UP[32] = {'A',  0xA0, 'B',  0xA1, 0xE0, 'E',  0xA3, 0xA4, 0xA5, 0xA6, 'K',
+                                   0xA7, 'M',  'H',  'O',  0xA8, 'P',  'C',  'T',  0xA9, 0xAA, 'X',
+                                   0xE1, 0xAB, 0xAC, 0xE2, 0xAD, 0xAE, 0xC4, 0xAF, 0xB0, 0xB1};
+static const uint8_t CYR_LO[32] = {'a',  0xB2, 0xB3, 0xB4, 0xE3, 'e',  0xB6, 0xB7, 0xB8, 0xB9, 0xBA,
+                                   0xBB, 0xBC, 0xBD, 'o',  0xBE, 'p',  'c',  0xBF, 'y',  0xE4, 'x',
+                                   0xE5, 0xC0, 0xC1, 0xE6, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7};
+static constexpr uint8_t CYR_YO_UP = 0xA2, CYR_YO_LO = 0xB5;
+
+// Ukrainian letters missing in the Cyrillic ROM are drawn into CGRAM slots 1..6
+// (slot 0 is avoided: code 0x00 would terminate C strings). І/і use Latin I/i.
+struct UkrGlyph { uint16_t cp; uint8_t rows[8]; };
+static const UkrGlyph UKR[] = {
+    {0x404, {0b01110, 0b10001, 0b10000, 0b11110, 0b10000, 0b10001, 0b01110, 0}},  // Є
+    {0x454, {0, 0, 0b01110, 0b10000, 0b11100, 0b10000, 0b01110, 0}},              // є
+    {0x407, {0b01010, 0, 0b01110, 0b00100, 0b00100, 0b00100, 0b01110, 0}},        // Ї
+    {0x457, {0b01010, 0, 0b01100, 0b00100, 0b00100, 0b00100, 0b01110, 0}},        // ї
+    {0x490, {0b00001, 0b11111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0}},  // Ґ
+    {0x491, {0, 0b00001, 0b11111, 0b10000, 0b10000, 0b10000, 0b10000, 0}},        // ґ
+};
+static constexpr int UKR_COUNT = sizeof(UKR) / sizeof(UKR[0]);
+static int ukrSlot(uint32_t cp) {
+  for (int i = 0; i < UKR_COUNT; i++)
+    if (UKR[i].cp == cp) return i + 1;
+  return 0;
+}
+
+// Ukrainian national transliteration (charset 0 / no Cyrillic ROM)
+
+static const char* const TRANSLIT[32] = {"a", "b", "v", "h", "d", "e", "zh", "z", "y", "i", "k",
+                                         "l", "m", "n", "o", "p", "r", "s", "t", "u", "f", "kh",
+                                         "ts", "ch", "sh", "shch", "", "y", "", "e", "yu", "ya"};
+static const char* translitExtra(uint32_t cp) {
+  switch (cp) {
+    case 0x404: case 0x454: return "ye";
+    case 0x406: case 0x456: return "i";
+    case 0x407: case 0x457: return "yi";
+    case 0x490: case 0x491: return "g";
+    case 0x401: case 0x451: return "yo";
+    default: return nullptr;
+  }
+}
+
+// UTF-8 -> display ROM bytes (one byte per character on the LCD).
+static void lcdText(char* out, size_t n, const char* in) {
+  bool cyr = cfg.lcdCharset == 1;
+  size_t o = 0;
+  const uint8_t* p = (const uint8_t*)in;
+  while (*p && o + 1 < n) {
+    uint32_t cp = *p;
+    int len = 1;
+    if (cp >= 0xC0 && cp < 0xE0 && (p[1] & 0xC0) == 0x80) {
+      cp = ((cp & 0x1F) << 6) | (p[1] & 0x3F);
+      len = 2;
+    } else if (cp >= 0xE0 && cp < 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
+      cp = ((cp & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+      len = 3;
+    } else if (cp >= 0xF0) {  // emoji etc.: unsupported
+      len = 4;
+      cp = '?';
+    }
+    for (int k = 0; k < len && *p; k++) p++;
+
+    if (cp == 0xB0) { out[o++] = DEG; continue; }  // °
+    if (cp == 0x2BC || cp == 0x2019 || cp == 0x2018) cp = '\'';  // Ukrainian apostrophe
+    if (cp == 0x2013 || cp == 0x2014) cp = '-';
+    bool up = cp >= 0x410 && cp <= 0x42F, lo = cp >= 0x430 && cp <= 0x44F;
+    bool yo = cp == 0x401 || cp == 0x451;
+    if (cyr) {
+      if (up) out[o++] = (char)CYR_UP[cp - 0x410];
+      else if (lo) out[o++] = (char)CYR_LO[cp - 0x430];
+      else if (yo) out[o++] = (char)(cp == 0x401 ? CYR_YO_UP : CYR_YO_LO);
+      else if (cp == 0x406) out[o++] = 'I';
+      else if (cp == 0x456) out[o++] = 'i';
+      else if (int slot = ukrSlot(cp)) out[o++] = (char)slot;
+      else out[o++] = (cp >= 0x20 && cp < 0x7F) ? (char)cp : '?';
+      continue;
+    }
+    const char* rep = up ? TRANSLIT[cp - 0x410] : lo ? TRANSLIT[cp - 0x430] : translitExtra(cp);
+    bool capital = up || (cp >= 0x400 && cp < 0x410) || cp == 0x490;
+    if (rep) {
+      for (int k = 0; rep[k] && o + 1 < n; k++) out[o++] = (k == 0 && capital) ? toupper(rep[k]) : rep[k];
+    } else {
+      out[o++] = (cp >= 0x20 && cp < 0x7F) ? (char)cp : '?';
+    }
+  }
+  out[o] = 0;
+}
+
+// Reverse mapping for the web mirror: ROM byte -> UTF-8 ("" if unknown).
+static const char* romToUtf8(uint8_t b) {
+  static char buf[4];
+  if (b == (uint8_t)DEG) return "°";
+  if (b >= 0x20 && b < 0x7F) {
+    buf[0] = b;
+    buf[1] = 0;
+    return buf;
+  }
+  uint32_t ukr = (cfg.lcdCharset == 1 && b >= 1 && b <= UKR_COUNT) ? UKR[b - 1].cp : 0;
+  if (cfg.lcdCharset == 1 && (b >= 0x80 || ukr)) {
+    uint32_t cp = ukr;
+    if (b == CYR_YO_UP) cp = 0x401;
+    else if (b == CYR_YO_LO) cp = 0x451;
+    for (int i = 0; i < 32 && !cp; i++) {
+      if (CYR_UP[i] == b && b != 0xC4) cp = 0x410 + i;  // 0xC4 is "ь"
+      else if (CYR_LO[i] == b) cp = 0x430 + i;
+    }
+    if (cp) {
+      buf[0] = 0xC0 | (cp >> 6);
+      buf[1] = 0x80 | (cp & 0x3F);
+      buf[2] = 0;
+      return buf;
+    }
+  }
+  return "?";
+}
+
+// Converted copy of a UTF-8 literal/format, valid until 8 more L() calls.
+static const char* L(const char* utf8) {
+  static char buf[8][64];
+  static uint8_t idx = 0;
+  idx = (idx + 1) % 8;
+  lcdText(buf[idx], sizeof(buf[idx]), utf8);
+  return buf[idx];
+}
+
+// Sensor name as shown on the LCD.
+static const char* lcdName(int i) {
+  static char buf[DS_COUNT][64];
+  lcdText(buf[i], sizeof(buf[i]), cfg.ds[i].name);
+  return buf[i];
+}
 
 static bool i2cPresent(uint8_t a) {
   Wire.beginTransmission(a);
@@ -67,11 +208,8 @@ void uiScreenToJson(JsonObject o) {
   for (int r = 0; r < cfg.lcdRows && r < 4; r++) {
     String line;
     for (int c = 0; c < cfg.lcdCols && c < 40; c++) {
-      char ch = shown[r][c];
-      if (!ch) ch = ' ';
-      if ((uint8_t)ch == 0xDF) line += "\u00B0";  // HD44780 degree sign -> UTF-8 °
-      else if ((uint8_t)ch < 0x20 || (uint8_t)ch > 0x7E) line += '?';
-      else line += ch;
+      uint8_t ch = (uint8_t)shown[r][c];
+      line += romToUtf8(ch ? ch : ' ');
     }
     lines.add(line);
   }
@@ -122,7 +260,7 @@ static void showMessage(const char* const* lines, int n, uint32_t ms) {
 }
 
 void uiMessage(const char* l1, const char* l2, uint32_t ms) {
-  const char* lines[] = {l1, l2};
+  const char* lines[] = {L(l1), L(l2)};
   showMessage(lines, 2, ms);
 }
 
@@ -135,8 +273,8 @@ static void fit(char* out, size_t n, const char* prefix, const char* value) {
 static bool apHasPass() { return strlen(cfg.apPass) >= 8; }
 
 static void fmtApPass(char* out, size_t n) {
-  if (apHasPass()) fit(out, n, "Pass ", cfg.apPass);
-  else snprintf(out, n, "No password");
+  if (apHasPass()) fit(out, n, L("Пароль "), cfg.apPass);
+  else snprintf(out, n, "%s", L("Без пароля"));
 }
 
 static int pageCount();
@@ -153,7 +291,10 @@ static void watchNetwork() {
   lastShown = key;
   if (mode == Mode::Edit) return;  // don't disturb offset editing
   if (key[0] == 'S') {
-    uiMessage("WiFi OK, IP:", key.c_str() + 1, 5000);
+    {
+      String ipLine = "IP " + String(key.c_str() + 1);
+      uiMessage("Підключено до WiFi", ipLine.c_str(), 5000);
+    }
     return;
   }
   // Setup access point: show everything needed to connect, then stay on the network page.
@@ -161,8 +302,8 @@ static void watchNetwork() {
   String apSsid = netApSsid();
   fit(ssid, sizeof(ssid), "WiFi ", apSsid.c_str());
   fmtApPass(pass, sizeof(pass));
-  fit(ip, sizeof(ip), "Open ", key.c_str() + 1);
-  const char* lines[] = {"WiFi setup mode", ssid, pass, ip};
+  fit(ip, sizeof(ip), L("Адреса "), key.c_str() + 1);
+  const char* lines[] = {L("Налаштування WiFi"), ssid, pass, ip};
   if (big()) showMessage(lines, 4, 8000);
   else showMessage(lines + 1, 2, 8000);
   jumpToNetPage = true;
@@ -186,50 +327,6 @@ static int pageCount() { return big() ? 4 : 3; }
 
 // Fixed-width value: "%5.1f" or a placeholder of the same width, so decimal
 // points line up in every row ("-12.3", " 22.1", " --.-").
-// HD44780 ROM A00 has no Cyrillic: transliterate UTF-8 Russian to Latin for the LCD
-// ("Подача котла" -> "Podacha kotla"). Other non-ASCII characters become '?'.
-static void lcdText(char* out, size_t n, const char* in) {
-  static const char* const LOWER[32] = {"a", "b", "v", "g", "d", "e", "zh", "z", "i", "y", "k",
-                                        "l", "m", "n", "o", "p", "r", "s", "t", "u", "f", "h",
-                                        "c", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"};
-  size_t o = 0;
-  const uint8_t* p = (const uint8_t*)in;
-  while (*p && o + 1 < n) {
-    const char* rep = nullptr;
-    bool upper = false;
-    uint32_t cp = *p;
-    int len = 1;
-    if (cp >= 0xC0 && (p[1] & 0xC0) == 0x80) {  // 2-byte UTF-8 (covers Cyrillic)
-      cp = ((cp & 0x1F) << 6) | (p[1] & 0x3F);
-      len = 2;
-    } else if (cp >= 0xE0) {  // 3/4-byte sequences: skip
-      len = cp >= 0xF0 ? 4 : 3;
-      cp = '?';
-    }
-    if (cp >= 0x410 && cp <= 0x42F) { rep = LOWER[cp - 0x410]; upper = true; }
-    else if (cp >= 0x430 && cp <= 0x44F) rep = LOWER[cp - 0x430];
-    else if (cp == 0x401) { rep = "e"; upper = true; }
-    else if (cp == 0x451) rep = "e";
-    else if (cp == 0xB0) { out[o++] = DEG; p += len; continue; }
-
-    if (rep) {
-      for (int k = 0; rep[k] && o + 1 < n; k++)
-        out[o++] = (k == 0 && upper) ? toupper(rep[k]) : rep[k];
-    } else {
-      out[o++] = (cp >= 0x20 && cp < 0x7F) ? (char)cp : '?';
-    }
-    for (int k = 0; k < len && *p; k++) p++;
-  }
-  out[o] = 0;
-}
-
-// Sensor name as shown on the LCD.
-static const char* lcdName(int i) {
-  static char buf[DS_COUNT][64];
-  lcdText(buf[i], sizeof(buf[i]), cfg.ds[i].name);
-  return buf[i];
-}
-
 // Fits `text` into a field of `width` chars. Longer text scrolls inside the
 // field (marquee): pause at the start, shift one char per step, pause at the
 // end, repeat. The rest of the line stays still. Result is padded to width.
@@ -288,36 +385,37 @@ static void drawPageDs() {
 static void drawPageI2c() {
   char l[41], v[12];
   if (big()) {
-    // label (6) | value %7.1f (decimal point always in column 11) | unit
+    // label (11) | value (decimal point always in column 15) | unit
     if (sens.ahtOk) {
-      snprintf(l, sizeof(l), "Temp  %7.1f %cC", sens.ahtTemp, DEG);
+      snprintf(l, sizeof(l), "%-11s%6.1f%cC", L("Температура"), sens.ahtTemp, DEG);
       putLine(0, l);
-      snprintf(l, sizeof(l), "Humid %7.1f %%", sens.ahtHum);
+      snprintf(l, sizeof(l), "%-11s%6.1f %%", L("Вологість"), sens.ahtHum);
       putLine(1, l);
     } else {
-      putLine(0, "AHT20: no data");
+      putLine(0, L("AHT20: нема даних"));
     }
     if (sens.bmpOk) {
-      if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "Press %7.1f mmHg", hpaToMmHg(sens.bmpPress));
-      else snprintf(l, sizeof(l), "Press %7.1f hPa", sens.bmpPress);
+      if (cfg.pressUnit == 1)
+        snprintf(l, sizeof(l), "%-11s%6.1f%s", L("Тиск"), hpaToMmHg(sens.bmpPress), L(" мм"));
+      else
+        snprintf(l, sizeof(l), "%-10s%7.1f%s", L("Тиск"), sens.bmpPress, L("гПа"));
       putLine(2, l);
-      snprintf(l, sizeof(l), "BMP T %7.1f %cC", sens.bmpTemp, DEG);
+      snprintf(l, sizeof(l), "%-11s%6.1f%cC", L("Темп. BMP"), sens.bmpTemp, DEG);
       putLine(3, l);
     } else {
-      putLine(2, "BMP280: no data");
+      putLine(2, L("BMP280: нема даних"));
     }
     return;
   }
   // 2 rows: "T: 22.1°C H: 63%" / "P:740.5mm  22.7°"
-  if (sens.ahtOk) snprintf(l, sizeof(l), "T:%5.1f%cC H:%3.0f%%", sens.ahtTemp, DEG, sens.ahtHum);
-  else snprintf(l, sizeof(l), "AHT20: no data");
+  if (sens.ahtOk) snprintf(l, sizeof(l), L("Т:%5.1f%cC В:%3.0f%%"), sens.ahtTemp, DEG, sens.ahtHum);
+  else snprintf(l, sizeof(l), "%s", L("AHT20: нема даних"));
   putLine(0, l);
   if (sens.bmpOk) {
-    val5(v, sizeof(v), sens.bmpTemp);
-    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "P:%5.1fmm %s%c", hpaToMmHg(sens.bmpPress), v, DEG);
-    else snprintf(l, sizeof(l), "P:%4.0fhPa %s%c", sens.bmpPress, v, DEG);
+    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), L("Тиск: %5.1f мм"), hpaToMmHg(sens.bmpPress));
+    else snprintf(l, sizeof(l), L("Тиск: %4.0f гПа"), sens.bmpPress);
   } else {
-    snprintf(l, sizeof(l), "BMP280: no data");
+    snprintf(l, sizeof(l), "%s", L("BMP280: нема даних"));
   }
   putLine(1, l);
 }
@@ -336,18 +434,14 @@ static void drawPageOverview() {
     snprintf(l, sizeof(l), "%d:%s%cC %d:%s%cC", row * 2 + 1, a, DEG, row * 2 + 2, b, DEG);
     putLine(row, l);
   }
-  if (sens.ahtOk) snprintf(l, sizeof(l), "T:%5.1f%cC H:%5.1f %%", sens.ahtTemp, DEG, sens.ahtHum);
-  else snprintf(l, sizeof(l), "AHT20: no data");
+  if (sens.ahtOk) snprintf(l, sizeof(l), L("Т:%5.1f%cC В:%5.1f %%"), sens.ahtTemp, DEG, sens.ahtHum);
+  else snprintf(l, sizeof(l), "%s", L("AHT20: нема даних"));
   putLine(2, l);
   if (sens.bmpOk) {
-    // "P:740.5mmHg" / "P:1013.2hPa" don't fit the 9-char half -> scroll in place
-    char full[24], field[16];
-    if (cfg.pressUnit == 1) snprintf(full, sizeof(full), "P:%5.1fmmHg", hpaToMmHg(sens.bmpPress));
-    else snprintf(full, sizeof(full), "P:%6.1fhPa", sens.bmpPress);
-    marquee(field, sizeof(field), full, 9);
-    snprintf(l, sizeof(l), "%s T:%5.1f%cC", field, sens.bmpTemp, DEG);
+    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), L("Тиск: %5.1f мм"), hpaToMmHg(sens.bmpPress));
+    else snprintf(l, sizeof(l), L("Тиск: %6.1f гПа"), sens.bmpPress);
   } else {
-    snprintf(l, sizeof(l), "BMP280: no data");
+    snprintf(l, sizeof(l), "%s", L("BMP280: нема даних"));
   }
   putLine(3, l);
 }
@@ -361,14 +455,14 @@ static void drawPageNet() {
     snprintf(l, sizeof(l), ip.length() + 3 <= cfg.lcdCols ? "IP %s" : "%s", ip.c_str());
     putLine(0, l);
     if (big()) {
-      snprintf(l, sizeof(l), "WiFi %s", WiFi.SSID().c_str());
+      fit(l, sizeof(l), "WiFi ", L(WiFi.SSID().c_str()));
       putLine(1, l);
-      snprintf(l, sizeof(l), "RSSI %d dBm", WiFi.RSSI());
+      snprintf(l, sizeof(l), L("Сигнал %d дБм"), WiFi.RSSI());
       putLine(2, l);
-      snprintf(l, sizeof(l), "Up %lud %02luh %02lum", up / 1440, up / 60 % 24, up % 60);
+      snprintf(l, sizeof(l), L("Працює %luд %02lu:%02lu"), up / 1440, up / 60 % 24, up % 60);
       putLine(3, l);
     } else {
-      snprintf(l, sizeof(l), "RSSI %d up %luh", WiFi.RSSI(), up / 60);
+      snprintf(l, sizeof(l), L("Сигнал %d, %luг"), WiFi.RSSI(), up / 60);
       putLine(1, l);
     }
   } else if (netApActive()) {
@@ -378,12 +472,12 @@ static void drawPageNet() {
       putLine(0, l);
       fmtApPass(l, sizeof(l));
       putLine(1, l);
-      fit(l, sizeof(l), "Open ", WiFi.softAPIP().toString().c_str());
+      fit(l, sizeof(l), L("Адреса "), WiFi.softAPIP().toString().c_str());
       putLine(2, l);
       if (cfg.ssid[0]) {
         const char* p = netStaProblem(true);
-        if (*p) snprintf(l, sizeof(l), "%s", p);
-        else fit(l, sizeof(l), "Retry ", cfg.ssid);
+        if (*p) snprintf(l, sizeof(l), "%s", L(p));
+        else fit(l, sizeof(l), L("Повтор "), L(cfg.ssid));
         putLine(3, l);
       }
     } else {
@@ -395,9 +489,9 @@ static void drawPageNet() {
       putLine(1, l);
     }
   } else {
-    putLine(0, "WiFi connecting");
-    putLine(1, cfg.ssid);
-    if (big()) putLine(2, netStaProblem(true));
+    putLine(0, L("Підключення WiFi"));
+    putLine(1, L(cfg.ssid));
+    if (big()) putLine(2, L(netStaProblem(true)));
   }
 }
 
@@ -410,7 +504,7 @@ static void fmtRawCorr(char* l, size_t n, int slot, float offset) {
     fmtTemp(b, sizeof(b), sens.ds[slot].raw + offset);
     snprintf(l, n, "%s>%s%cC", a, b, DEG);
   } else {
-    snprintf(l, n, cfg.ds[slot].addr[0] ? "sensor offline" : "slot empty");
+    snprintf(l, n, "%s", L(cfg.ds[slot].addr[0] ? "немає зв'язку" : "не призначено"));
   }
 }
 
@@ -424,44 +518,44 @@ static const char* customName(int i) {
 static void drawMenu() {
   char l[41];
   if (big()) {
-    putLine(0, "== Calibration ==");
+    putLine(0, L("== Корекція =="));
     if (sel < DS_COUNT) {
       snprintf(l, sizeof(l), "> T%d %s", sel + 1, customName(sel));
       putLine(1, l);
-      snprintf(l, sizeof(l), "  Offset %+.2f", cfg.ds[sel].offset);
+      snprintf(l, sizeof(l), L("  Поправка %+.2f"), cfg.ds[sel].offset);
       putLine(2, l);
       char rc[24];
       fmtRawCorr(rc, sizeof(rc), sel, cfg.ds[sel].offset);
       snprintf(l, sizeof(l), "  %s", rc);
       putLine(3, l);
     } else {
-      putLine(1, "> Exit");
+      putLine(1, L("> Вихід"));
     }
     return;
   }
   if (sel < DS_COUNT) {
-    snprintf(l, sizeof(l), "Calib>T%d %+.2f", sel + 1, cfg.ds[sel].offset);
+    snprintf(l, sizeof(l), L("Кор>T%d %+.2f"), sel + 1, cfg.ds[sel].offset);
     putLine(0, l);
     fmtRawCorr(l, sizeof(l), sel, cfg.ds[sel].offset);
     putLine(1, l);
   } else {
-    putLine(0, "Calib>Exit");
+    putLine(0, L("Кор>Вихід"));
   }
 }
 
 static void drawEdit() {
   char l[41];
   if (big()) {
-    snprintf(l, sizeof(l), "Edit T%d %s", sel + 1, customName(sel));
+    snprintf(l, sizeof(l), "T%d %s", sel + 1, customName(sel));
     putLine(0, l);
-    snprintf(l, sizeof(l), "Offset: [%+.2f]", editOffset);
+    snprintf(l, sizeof(l), L("Поправка: [%+.2f]"), editOffset);
     putLine(1, l);
     fmtRawCorr(l, sizeof(l), sel, editOffset);
     putLine(2, l);
-    putLine(3, cfg.lcdCols >= 20 ? "click=save hold=esc" : "clk=save hold=esc");
+    putLine(3, L(cfg.lcdCols >= 20 ? "Клік-OK  Утрим-скас." : "Клік-OK Утр-скас"));
     return;
   }
-  snprintf(l, sizeof(l), "Set T%d: %+.2f", sel + 1, editOffset);
+  snprintf(l, sizeof(l), L("Попр.T%d: %+.2f"), sel + 1, editOffset);
   putLine(0, l);
   fmtRawCorr(l, sizeof(l), sel, editOffset);
   putLine(1, l);
@@ -496,6 +590,7 @@ void uiBegin() {
   lcd = new LiquidCrystal_I2C(lcdAddr, cfg.lcdCols, cfg.lcdRows);
   lcd->init();
   lcd->backlight();
+  for (int i = 0; i < UKR_COUNT; i++) lcd->createChar(i + 1, (uint8_t*)UKR[i].rows);
   lcd->clear();
   memset(shown, 0, sizeof(shown));
   uiMessage("ThermoHub", "v" FW_VERSION);
@@ -553,11 +648,11 @@ void uiLoop() {
         cfg.ds[sel].offset = editOffset;
         bool ok = configSave();
         mode = Mode::Menu;
-        uiMessage(ok ? "Saved" : "Save FAILED");
+        uiMessage(ok ? "Збережено" : "Помилка запису");
       }
       if (b == BtnEvent::Long) {
         mode = Mode::Menu;
-        uiMessage("Cancelled");
+        uiMessage("Скасовано");
       }
       break;
   }
@@ -578,6 +673,19 @@ void uiLoop() {
 // page 0: 0xA0..0xDF, page 1: 0xE0..0xFF + 0x80..0x9F. Shown for 30 s.
 void uiCharsetTest(int page) {
   const uint8_t starts[2][4] = {{0xA0, 0xB0, 0xC0, 0xD0}, {0xE0, 0xF0, 0x80, 0x90}};
+  if (page == 2) {
+    // Alphabet check through the real encoder + degree sign candidates at the end of row 2.
+    frameBegin();
+    char l[41];
+    putLine(0, L("АБВГҐДЕЄЖЗИІЇЙКЛМН"));
+    snprintf(l, sizeof(l), "%s %c%c", L("ОПРСТУФХЦЧШЩЬЮЯ"), (char)0xDF, (char)0xEF);
+    putLine(1, l);
+    putLine(2, L("абвгґдеєжзиіїйклмн"));
+    putLine(3, L("опрстуфхцчшщьюя 1-2"));
+    frameEnd();
+    msgUntil = millis() + 60000;
+    return;
+  }
   page = constrain(page, 0, 1);
   frameBegin();
   for (int r = 0; r < 4 && r < cfg.lcdRows; r++) {
