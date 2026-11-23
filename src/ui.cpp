@@ -216,20 +216,20 @@ static void drawPageDs() {
 static void drawPageI2c() {
   char l[41], v[12];
   if (big()) {
-    // label (6) | value %6.1f (decimal point always in column 10) | unit
+    // label (6) | value %7.1f (decimal point always in column 11) | unit
     if (sens.ahtOk) {
-      snprintf(l, sizeof(l), "Temp  %6.1f %cC", sens.ahtTemp, DEG);
+      snprintf(l, sizeof(l), "Temp  %7.1f %cC", sens.ahtTemp, DEG);
       putLine(0, l);
-      snprintf(l, sizeof(l), "Humid %6.1f %%", sens.ahtHum);
+      snprintf(l, sizeof(l), "Humid %7.1f %%", sens.ahtHum);
       putLine(1, l);
     } else {
       putLine(0, "AHT20: no data");
     }
     if (sens.bmpOk) {
-      if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "Press %6.1f mmHg", hpaToMmHg(sens.bmpPress));
-      else snprintf(l, sizeof(l), "Press %6.1f hPa", sens.bmpPress);
+      if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "Press %7.1f mmHg", hpaToMmHg(sens.bmpPress));
+      else snprintf(l, sizeof(l), "Press %7.1f hPa", sens.bmpPress);
       putLine(2, l);
-      snprintf(l, sizeof(l), "BMP T %6.1f %cC", sens.bmpTemp, DEG);
+      snprintf(l, sizeof(l), "BMP T %7.1f %cC", sens.bmpTemp, DEG);
       putLine(3, l);
     } else {
       putLine(2, "BMP280: no data");
