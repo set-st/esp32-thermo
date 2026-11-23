@@ -25,8 +25,8 @@ void configDefaults(Config& c) {
   c.pinEncB = 33;
   c.pinEncBtn = 25;
   c.lcdAddr = 0;
-  c.lcdCols = 16;
-  c.lcdRows = 2;
+  c.lcdCols = 20;
+  c.lcdRows = 4;
   c.encReverse = false;
   c.encStepsPerDetent = 4;
   c.pollMs = 2000;

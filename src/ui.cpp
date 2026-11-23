@@ -1,9 +1,10 @@
 // LCD pages and encoder menu.
 //
 // View mode:  rotate = switch page, click = next page, long press = calibration menu
-//   page 0: four DS18B20 temperatures
-//   page 1: AHT20 temperature/humidity + BMP280 pressure/temperature
-//   page 2: network info (IP / AP name)
+//   page 1: four DS18B20 temperatures (4-row LCD: one per line with names)
+//   page 2: AHT20 temperature/humidity + BMP280 pressure/temperature
+//   page 3: (4-row LCD only) overview: everything on one screen
+//   last:   network info (IP / SSID / RSSI / uptime or AP name)
 // Calibration menu: rotate = select T1..T4 / Exit, click = edit, long = back
 // Edit offset:      rotate = ±0.1 °C (fast spin ±0.5), click = save, long = cancel
 // Menu/edit leave automatically after 30 s of inactivity (without saving).
@@ -24,7 +25,6 @@ static char shown[4][41];
 enum class Mode { View, Menu, Edit };
 static Mode mode = Mode::View;
 static int page = 0;
-static constexpr int PAGES = 3;
 static int sel = 0;  // 0..3 = T1..T4, 4 = exit
 static float editOffset = 0;
 static uint32_t lastInput = 0, lastDraw = 0, msgUntil = 0;
@@ -48,8 +48,13 @@ static uint8_t detectLcd() {
 
 uint8_t uiLcdAddr() { return lcdAddr; }
 
+static bool big() { return cfg.lcdRows >= 4; }
+
+static uint8_t frameRows = 0;  // rows written during the current frame
+
 static void putLine(int row, const char* text) {
   if (!lcd || row >= cfg.lcdRows || row >= 4) return;
+  frameRows |= 1 << row;
   char buf[41];
   int cols = min<int>(cfg.lcdCols, 40);
   int n = strlen(text);
@@ -61,9 +66,19 @@ static void putLine(int row, const char* text) {
   lcd->print(buf);
 }
 
+static void frameBegin() { frameRows = 0; }
+static void frameEnd() {
+  for (int r = 0; r < cfg.lcdRows && r < 4; r++)
+    if (!(frameRows & (1 << r))) putLine(r, "");
+}
+
 void uiMessage(const char* l1, const char* l2, uint32_t ms) {
-  putLine(0, l1);
-  putLine(1, l2);
+  frameBegin();
+  // on a 4-row LCD the message is centred vertically
+  int r0 = big() ? 1 : 0;
+  putLine(r0, l1);
+  putLine(r0 + 1, l2);
+  frameEnd();
   msgUntil = millis() + ms;
 }
 
@@ -86,8 +101,37 @@ static void fmtTemp(char* out, size_t n, float t) {
   else snprintf(out, n, "%.1f", t);
 }
 
+static void fmtPress(char* out, size_t n) {
+  if (!sens.bmpOk) snprintf(out, n, "--.-");
+  else if (cfg.pressUnit == 1) snprintf(out, n, "%.1fmm", hpaToMmHg(sens.bmpPress));
+  else snprintf(out, n, "%.1fhPa", sens.bmpPress);
+}
+
+// ---- view pages ------------------------------------------------------------
+
+enum class Page { Ds, I2c, Overview, Net };
+// 2-row LCD: DS, I2C, Net.   4-row LCD: DS (with names), I2C, Overview, Net.
+static Page pageAt(int i) {
+  static const Page small[] = {Page::Ds, Page::I2c, Page::Net};
+  static const Page large[] = {Page::Ds, Page::I2c, Page::Overview, Page::Net};
+  return big() ? large[i % 4] : small[i % 3];
+}
+static int pageCount() { return big() ? 4 : 3; }
+
 static void drawPageDs() {
-  char a[8], b[8], l[41];
+  char l[41], a[8], b[8];
+  if (big()) {
+    // "1 Name         23.4°C" — one sensor per line, name truncated to fit
+    int nameW = max(0, (int)cfg.lcdCols - 2 - 7);
+    for (int i = 0; i < DS_COUNT; i++) {
+      float t = dsTemp(i);
+      if (isnan(t)) snprintf(a, sizeof(a), cfg.ds[i].addr[0] ? "  --.-" : "  ----");
+      else snprintf(a, sizeof(a), "%5.1f%c", t, DEG);
+      snprintf(l, sizeof(l), "%d %-*.*s%6s", i + 1, nameW, nameW, cfg.ds[i].name, a);
+      putLine(i, l);
+    }
+    return;
+  }
   for (int row = 0; row < 2; row++) {
     fmtTemp(a, sizeof(a), dsTemp(row * 2));
     fmtTemp(b, sizeof(b), dsTemp(row * 2 + 1));
@@ -97,78 +141,167 @@ static void drawPageDs() {
 }
 
 static void drawPageI2c() {
-  char l[41];
+  char l[41], p[16];
+  if (big()) {
+    if (sens.ahtOk) snprintf(l, sizeof(l), "Temp  %6.1f%cC", sens.ahtTemp, DEG);
+    else snprintf(l, sizeof(l), "AHT20: no data");
+    putLine(0, l);
+    if (sens.ahtOk) snprintf(l, sizeof(l), "Humid %6.1f %%", sens.ahtHum);
+    else l[0] = 0;
+    putLine(1, l);
+    fmtPress(p, sizeof(p));
+    if (sens.bmpOk) {
+      snprintf(l, sizeof(l), "Press %s", p);
+      putLine(2, l);
+      snprintf(l, sizeof(l), "BMP T %6.1f%cC", sens.bmpTemp, DEG);
+      putLine(3, l);
+    } else {
+      putLine(2, "BMP280: no data");
+    }
+    return;
+  }
   if (sens.ahtOk) snprintf(l, sizeof(l), "T%.1f%cC H%.1f%%", sens.ahtTemp, DEG, sens.ahtHum);
   else snprintf(l, sizeof(l), "AHT20: no data");
   putLine(0, l);
-
   if (sens.bmpOk) {
-    if (cfg.pressUnit == 1)
-      snprintf(l, sizeof(l), "P%.1fmm %.1f%cC", hpaToMmHg(sens.bmpPress), sens.bmpTemp, DEG);
-    else
-      snprintf(l, sizeof(l), "P%.1fhPa %.1f%c", sens.bmpPress, sens.bmpTemp, DEG);
+    fmtPress(p, sizeof(p));
+    snprintf(l, sizeof(l), "P%s %.1f%c", p, sens.bmpTemp, DEG);
   } else {
     snprintf(l, sizeof(l), "BMP280: no data");
   }
   putLine(1, l);
 }
 
+// Everything on one screen (4-row LCD only).
+static void drawPageOverview() {
+  char l[41], a[8], b[8], p[16];
+  for (int row = 0; row < 2; row++) {
+    fmtTemp(a, sizeof(a), dsTemp(row * 2));
+    fmtTemp(b, sizeof(b), dsTemp(row * 2 + 1));
+    snprintf(l, sizeof(l), "%d:%-6s   %d:%-6s", row * 2 + 1, a, row * 2 + 2, b);
+    putLine(row, l);
+  }
+  if (sens.ahtOk) snprintf(l, sizeof(l), "%.1f%cC  %.1f%%", sens.ahtTemp, DEG, sens.ahtHum);
+  else snprintf(l, sizeof(l), "AHT20: no data");
+  putLine(2, l);
+  fmtPress(p, sizeof(p));
+  if (sens.bmpOk) snprintf(l, sizeof(l), "%s  %.1f%cC", p, sens.bmpTemp, DEG);
+  else snprintf(l, sizeof(l), "BMP280: no data");
+  putLine(3, l);
+}
+
 static void drawPageNet() {
   char l[41];
+  uint32_t up = millis() / 60000UL;
   if (netStaConnected()) {
     String ip = WiFi.localIP().toString();
     // "IP " prefix only if the full address still fits (xxx.xxx.xxx.xxx = 15 chars)
     snprintf(l, sizeof(l), ip.length() + 3 <= cfg.lcdCols ? "IP %s" : "%s", ip.c_str());
     putLine(0, l);
-    snprintf(l, sizeof(l), "RSSI %d up %luh", WiFi.RSSI(), millis() / 3600000UL);
-    putLine(1, l);
+    if (big()) {
+      snprintf(l, sizeof(l), "WiFi %s", WiFi.SSID().c_str());
+      putLine(1, l);
+      snprintf(l, sizeof(l), "RSSI %d dBm", WiFi.RSSI());
+      putLine(2, l);
+      snprintf(l, sizeof(l), "Up %lud %02luh %02lum", up / 1440, up / 60 % 24, up % 60);
+      putLine(3, l);
+    } else {
+      snprintf(l, sizeof(l), "RSSI %d up %luh", WiFi.RSSI(), up / 60);
+      putLine(1, l);
+    }
   } else if (netApActive()) {
     snprintf(l, sizeof(l), "AP %s", WiFi.softAPIP().toString().c_str());
     putLine(0, l);
     putLine(1, netApSsid().c_str());
+    if (big()) {
+      snprintf(l, sizeof(l), strlen(cfg.apPass) >= 8 ? "Pass %s" : "Open network", cfg.apPass);
+      putLine(2, l);
+      if (cfg.ssid[0]) {
+        snprintf(l, sizeof(l), "Retry %s", cfg.ssid);
+        putLine(3, l);
+      }
+    }
   } else {
     putLine(0, "WiFi connecting");
     putLine(1, cfg.ssid);
   }
 }
 
-static void drawRawCorr(int slot, float offset) {
-  char l[41], a[8], b[8];
+// ---- calibration menu ----------------------------------------------------
+
+static void fmtRawCorr(char* l, size_t n, int slot, float offset) {
+  char a[8], b[8];
   if (sens.ds[slot].ok) {
     fmtTemp(a, sizeof(a), sens.ds[slot].raw);
     fmtTemp(b, sizeof(b), sens.ds[slot].raw + offset);
-    snprintf(l, sizeof(l), "%s>%s%cC", a, b, DEG);
+    snprintf(l, n, "%s>%s%cC", a, b, DEG);
   } else {
-    snprintf(l, sizeof(l), cfg.ds[slot].addr[0] ? "sensor offline" : "slot empty");
+    snprintf(l, n, cfg.ds[slot].addr[0] ? "sensor offline" : "slot empty");
   }
+}
+
+static void drawMenu() {
+  char l[41];
+  if (big()) {
+    putLine(0, "== Calibration ==");
+    if (sel < DS_COUNT) {
+      snprintf(l, sizeof(l), "> T%d %s", sel + 1, cfg.ds[sel].name);
+      putLine(1, l);
+      snprintf(l, sizeof(l), "  Offset %+.2f", cfg.ds[sel].offset);
+      putLine(2, l);
+      char rc[24];
+      fmtRawCorr(rc, sizeof(rc), sel, cfg.ds[sel].offset);
+      snprintf(l, sizeof(l), "  %s", rc);
+      putLine(3, l);
+    } else {
+      putLine(1, "> Exit");
+    }
+    return;
+  }
+  if (sel < DS_COUNT) {
+    snprintf(l, sizeof(l), "Calib>T%d %+.2f", sel + 1, cfg.ds[sel].offset);
+    putLine(0, l);
+    fmtRawCorr(l, sizeof(l), sel, cfg.ds[sel].offset);
+    putLine(1, l);
+  } else {
+    putLine(0, "Calib>Exit");
+  }
+}
+
+static void drawEdit() {
+  char l[41];
+  if (big()) {
+    snprintf(l, sizeof(l), "Edit T%d %s", sel + 1, cfg.ds[sel].name);
+    putLine(0, l);
+    snprintf(l, sizeof(l), "Offset: [%+.2f]", editOffset);
+    putLine(1, l);
+    fmtRawCorr(l, sizeof(l), sel, editOffset);
+    putLine(2, l);
+    putLine(3, cfg.lcdCols >= 20 ? "click=save hold=esc" : "clk=save hold=esc");
+    return;
+  }
+  snprintf(l, sizeof(l), "Set T%d: %+.2f", sel + 1, editOffset);
+  putLine(0, l);
+  fmtRawCorr(l, sizeof(l), sel, editOffset);
   putLine(1, l);
 }
 
 static void draw() {
   if (!lcd || millis() < msgUntil) return;
-  char l[41];
+  frameBegin();
   switch (mode) {
     case Mode::View:
-      if (page == 0) drawPageDs();
-      else if (page == 1) drawPageI2c();
-      else drawPageNet();
-      break;
-    case Mode::Menu:
-      if (sel < DS_COUNT) {
-        snprintf(l, sizeof(l), "Calib>T%d %+.2f", sel + 1, cfg.ds[sel].offset);
-        putLine(0, l);
-        drawRawCorr(sel, cfg.ds[sel].offset);
-      } else {
-        putLine(0, "Calib>Exit");
-        putLine(1, "");
+      switch (pageAt(page)) {
+        case Page::Ds: drawPageDs(); break;
+        case Page::I2c: drawPageI2c(); break;
+        case Page::Overview: drawPageOverview(); break;
+        case Page::Net: drawPageNet(); break;
       }
       break;
-    case Mode::Edit:
-      snprintf(l, sizeof(l), "Set T%d: %+.2f", sel + 1, editOffset);
-      putLine(0, l);
-      drawRawCorr(sel, editOffset);
-      break;
+    case Mode::Menu: drawMenu(); break;
+    case Mode::Edit: drawEdit(); break;
   }
+  frameEnd();
 }
 
 void uiBegin() {
@@ -201,8 +334,8 @@ void uiLoop() {
 
   switch (mode) {
     case Mode::View:
-      if (d) page = ((page + d) % PAGES + PAGES) % PAGES;
-      if (b == BtnEvent::Click) page = (page + 1) % PAGES;
+      if (d) page = ((page + d) % pageCount() + pageCount()) % pageCount();
+      if (b == BtnEvent::Click) page = (page + 1) % pageCount();
       if (b == BtnEvent::Long) {
         mode = Mode::Menu;
         sel = 0;

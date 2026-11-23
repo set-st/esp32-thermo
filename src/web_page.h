@@ -70,7 +70,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
  <h3>Дисплей и энкодер</h3>
  <div class="row">
   <div><label>Адрес LCD (hex, 0 = авто)</label><input id="lcdAddr"></div>
-  <div><label>Размер LCD</label><select id="lcdSize"><option value="16x2">16×2</option><option value="20x2">20×2</option><option value="20x4">20×4</option></select></div>
+  <div><label>Размер LCD</label><select id="lcdSize"><option value="20x4">20×4</option><option value="16x4">16×4</option><option value="16x2">16×2</option><option value="20x2">20×2</option></select></div>
   <div><label>Шагов энкодера на щелчок</label><select id="encSteps"><option>4</option><option>2</option><option>1</option></select></div>
   <div><label><input type="checkbox" id="encRev"> Инвертировать направление</label></div>
  </div>
