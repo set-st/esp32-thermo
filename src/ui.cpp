@@ -273,8 +273,8 @@ static void fit(char* out, size_t n, const char* prefix, const char* value) {
 static bool apHasPass() { return strlen(cfg.apPass) >= 8; }
 
 static void fmtApPass(char* out, size_t n) {
-  if (apHasPass()) fit(out, n, L("Пароль "), cfg.apPass);
-  else snprintf(out, n, "%s", L("Без пароля"));
+  if (apHasPass()) fit(out, n, "Pass ", cfg.apPass);
+  else snprintf(out, n, "No password");
 }
 
 static int pageCount();
@@ -293,7 +293,7 @@ static void watchNetwork() {
   if (key[0] == 'S') {
     {
       String ipLine = "IP " + String(key.c_str() + 1);
-      uiMessage("Підключено до WiFi", ipLine.c_str(), 5000);
+      uiMessage("WiFi connected", ipLine.c_str(), 5000);
     }
     return;
   }
@@ -302,8 +302,8 @@ static void watchNetwork() {
   String apSsid = netApSsid();
   fit(ssid, sizeof(ssid), "WiFi ", apSsid.c_str());
   fmtApPass(pass, sizeof(pass));
-  fit(ip, sizeof(ip), L("Адреса "), key.c_str() + 1);
-  const char* lines[] = {L("Налаштування WiFi"), ssid, pass, ip};
+  fit(ip, sizeof(ip), "Open ", key.c_str() + 1);
+  const char* lines[] = {"WiFi setup mode", ssid, pass, ip};
   if (big()) showMessage(lines, 4, 8000);
   else showMessage(lines + 1, 2, 8000);
   jumpToNetPage = true;
@@ -387,35 +387,35 @@ static void drawPageI2c() {
   if (big()) {
     // label (11) | value (decimal point always in column 15) | unit
     if (sens.ahtOk) {
-      snprintf(l, sizeof(l), "%-11s%6.1f%cC", L("Температура"), sens.ahtTemp, DEG);
+      snprintf(l, sizeof(l), "%-11s%6.1f%cC", "Temperature", sens.ahtTemp, DEG);
       putLine(0, l);
-      snprintf(l, sizeof(l), "%-11s%6.1f %%", L("Вологість"), sens.ahtHum);
+      snprintf(l, sizeof(l), "%-11s%6.1f %%", "Humidity", sens.ahtHum);
       putLine(1, l);
     } else {
-      putLine(0, L("AHT20: нема даних"));
+      putLine(0, "AHT20: no data");
     }
     if (sens.bmpOk) {
       if (cfg.pressUnit == 1)
-        snprintf(l, sizeof(l), "%-11s%6.1f%s", L("Тиск"), hpaToMmHg(sens.bmpPress), L(" мм"));
+        snprintf(l, sizeof(l), "%-11s%6.1f mm", "Pressure", hpaToMmHg(sens.bmpPress));
       else
-        snprintf(l, sizeof(l), "%-10s%7.1f%s", L("Тиск"), sens.bmpPress, L("гПа"));
+        snprintf(l, sizeof(l), "%-10s%7.1fhPa", "Pressure", sens.bmpPress);
       putLine(2, l);
-      snprintf(l, sizeof(l), "%-11s%6.1f%cC", L("Темп. BMP"), sens.bmpTemp, DEG);
+      snprintf(l, sizeof(l), "%-11s%6.1f%cC", "BMP temp", sens.bmpTemp, DEG);
       putLine(3, l);
     } else {
-      putLine(2, L("BMP280: нема даних"));
+      putLine(2, "BMP280: no data");
     }
     return;
   }
   // 2 rows: "T: 22.1°C H: 63%" / "P:740.5mm  22.7°"
-  if (sens.ahtOk) snprintf(l, sizeof(l), L("Т:%5.1f%cC В:%3.0f%%"), sens.ahtTemp, DEG, sens.ahtHum);
-  else snprintf(l, sizeof(l), "%s", L("AHT20: нема даних"));
+  if (sens.ahtOk) snprintf(l, sizeof(l), "T:%5.1f%cC H:%3.0f%%", sens.ahtTemp, DEG, sens.ahtHum);
+  else snprintf(l, sizeof(l), "%s", "AHT20: no data");
   putLine(0, l);
   if (sens.bmpOk) {
-    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), L("Тиск: %5.1f мм"), hpaToMmHg(sens.bmpPress));
-    else snprintf(l, sizeof(l), L("Тиск: %4.0f гПа"), sens.bmpPress);
+    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "Press %5.1f mm", hpaToMmHg(sens.bmpPress));
+    else snprintf(l, sizeof(l), "Press %4.0f hPa", sens.bmpPress);
   } else {
-    snprintf(l, sizeof(l), "%s", L("BMP280: нема даних"));
+    snprintf(l, sizeof(l), "%s", "BMP280: no data");
   }
   putLine(1, l);
 }
@@ -434,14 +434,14 @@ static void drawPageOverview() {
     snprintf(l, sizeof(l), "%d:%s%cC %d:%s%cC", row * 2 + 1, a, DEG, row * 2 + 2, b, DEG);
     putLine(row, l);
   }
-  if (sens.ahtOk) snprintf(l, sizeof(l), L("Т:%5.1f%cC В:%5.1f %%"), sens.ahtTemp, DEG, sens.ahtHum);
-  else snprintf(l, sizeof(l), "%s", L("AHT20: нема даних"));
+  if (sens.ahtOk) snprintf(l, sizeof(l), "T:%5.1f%cC H:%5.1f %%", sens.ahtTemp, DEG, sens.ahtHum);
+  else snprintf(l, sizeof(l), "%s", "AHT20: no data");
   putLine(2, l);
   if (sens.bmpOk) {
-    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), L("Тиск: %5.1f мм"), hpaToMmHg(sens.bmpPress));
-    else snprintf(l, sizeof(l), L("Тиск: %6.1f гПа"), sens.bmpPress);
+    if (cfg.pressUnit == 1) snprintf(l, sizeof(l), "Pressure: %5.1f mm", hpaToMmHg(sens.bmpPress));
+    else snprintf(l, sizeof(l), "Pressure: %6.1f hPa", sens.bmpPress);
   } else {
-    snprintf(l, sizeof(l), "%s", L("BMP280: нема даних"));
+    snprintf(l, sizeof(l), "%s", "BMP280: no data");
   }
   putLine(3, l);
 }
@@ -457,12 +457,12 @@ static void drawPageNet() {
     if (big()) {
       fit(l, sizeof(l), "WiFi ", L(WiFi.SSID().c_str()));
       putLine(1, l);
-      snprintf(l, sizeof(l), L("Сигнал %d дБм"), WiFi.RSSI());
+      snprintf(l, sizeof(l), "Signal %d dBm", WiFi.RSSI());
       putLine(2, l);
-      snprintf(l, sizeof(l), L("Працює %luд %02lu:%02lu"), up / 1440, up / 60 % 24, up % 60);
+      snprintf(l, sizeof(l), "Uptime %lud %02lu:%02lu", up / 1440, up / 60 % 24, up % 60);
       putLine(3, l);
     } else {
-      snprintf(l, sizeof(l), L("Сигнал %d, %luг"), WiFi.RSSI(), up / 60);
+      snprintf(l, sizeof(l), "Signal %d, up %luh", WiFi.RSSI(), up / 60);
       putLine(1, l);
     }
   } else if (netApActive()) {
@@ -472,12 +472,12 @@ static void drawPageNet() {
       putLine(0, l);
       fmtApPass(l, sizeof(l));
       putLine(1, l);
-      fit(l, sizeof(l), L("Адреса "), WiFi.softAPIP().toString().c_str());
+      fit(l, sizeof(l), "Open ", WiFi.softAPIP().toString().c_str());
       putLine(2, l);
       if (cfg.ssid[0]) {
         const char* p = netStaProblem(true);
-        if (*p) snprintf(l, sizeof(l), "%s", L(p));
-        else fit(l, sizeof(l), L("Повтор "), L(cfg.ssid));
+        if (*p) snprintf(l, sizeof(l), "%s", p);
+        else fit(l, sizeof(l), "Retry ", L(cfg.ssid));
         putLine(3, l);
       }
     } else {
@@ -489,9 +489,9 @@ static void drawPageNet() {
       putLine(1, l);
     }
   } else {
-    putLine(0, L("Підключення WiFi"));
+    putLine(0, "WiFi connecting");
     putLine(1, L(cfg.ssid));
-    if (big()) putLine(2, L(netStaProblem(true)));
+    if (big()) putLine(2, netStaProblem(true));
   }
 }
 
@@ -504,7 +504,7 @@ static void fmtRawCorr(char* l, size_t n, int slot, float offset) {
     fmtTemp(b, sizeof(b), sens.ds[slot].raw + offset);
     snprintf(l, n, "%s>%s%cC", a, b, DEG);
   } else {
-    snprintf(l, n, "%s", L(cfg.ds[slot].addr[0] ? "немає зв'язку" : "не призначено"));
+    snprintf(l, n, "%s", cfg.ds[slot].addr[0] ? "sensor offline" : "slot empty");
   }
 }
 
@@ -518,28 +518,28 @@ static const char* customName(int i) {
 static void drawMenu() {
   char l[41];
   if (big()) {
-    putLine(0, L("== Корекція =="));
+    putLine(0, "== Calibration ==");
     if (sel < DS_COUNT) {
       snprintf(l, sizeof(l), "> T%d %s", sel + 1, customName(sel));
       putLine(1, l);
-      snprintf(l, sizeof(l), L("  Поправка %+.2f"), cfg.ds[sel].offset);
+      snprintf(l, sizeof(l), "  Offset %+.2f", cfg.ds[sel].offset);
       putLine(2, l);
       char rc[24];
       fmtRawCorr(rc, sizeof(rc), sel, cfg.ds[sel].offset);
       snprintf(l, sizeof(l), "  %s", rc);
       putLine(3, l);
     } else {
-      putLine(1, L("> Вихід"));
+      putLine(1, "> Exit");
     }
     return;
   }
   if (sel < DS_COUNT) {
-    snprintf(l, sizeof(l), L("Кор>T%d %+.2f"), sel + 1, cfg.ds[sel].offset);
+    snprintf(l, sizeof(l), "Calib>T%d %+.2f", sel + 1, cfg.ds[sel].offset);
     putLine(0, l);
     fmtRawCorr(l, sizeof(l), sel, cfg.ds[sel].offset);
     putLine(1, l);
   } else {
-    putLine(0, L("Кор>Вихід"));
+    putLine(0, "Calib>Exit");
   }
 }
 
@@ -548,14 +548,14 @@ static void drawEdit() {
   if (big()) {
     snprintf(l, sizeof(l), "T%d %s", sel + 1, customName(sel));
     putLine(0, l);
-    snprintf(l, sizeof(l), L("Поправка: [%+.2f]"), editOffset);
+    snprintf(l, sizeof(l), "Offset: [%+.2f]", editOffset);
     putLine(1, l);
     fmtRawCorr(l, sizeof(l), sel, editOffset);
     putLine(2, l);
-    putLine(3, L(cfg.lcdCols >= 20 ? "Клік-OK  Утрим-скас." : "Клік-OK Утр-скас"));
+    putLine(3, cfg.lcdCols >= 20 ? "Click=save Hold=esc" : "Clk=OK Hold=esc");
     return;
   }
-  snprintf(l, sizeof(l), L("Попр.T%d: %+.2f"), sel + 1, editOffset);
+  snprintf(l, sizeof(l), "Set T%d: %+.2f", sel + 1, editOffset);
   putLine(0, l);
   fmtRawCorr(l, sizeof(l), sel, editOffset);
   putLine(1, l);
@@ -648,11 +648,11 @@ void uiLoop() {
         cfg.ds[sel].offset = editOffset;
         bool ok = configSave();
         mode = Mode::Menu;
-        uiMessage(ok ? "Збережено" : "Помилка запису");
+        uiMessage(ok ? "Saved" : "Save FAILED");
       }
       if (b == BtnEvent::Long) {
         mode = Mode::Menu;
-        uiMessage("Скасовано");
+        uiMessage("Cancelled");
       }
       break;
   }

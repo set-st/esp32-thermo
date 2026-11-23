@@ -117,7 +117,7 @@ static void handlePostConfig() {
   d["reboot"] = reboot;
   sendJson(d);
   if (reboot) {
-    uiMessage("Збережено", "Перезапуск...");
+    uiMessage("Config saved", "Rebooting...");
     scheduleReboot(1500);
   }
 }
@@ -192,7 +192,7 @@ static void handleReboot() {
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
-  uiMessage("Перезапуск...");
+  uiMessage("Rebooting...");
   scheduleReboot();
 }
 
@@ -201,7 +201,7 @@ static void handleFactoryReset() {
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
-  uiMessage("Скидання налашт.", "Перезапуск...");
+  uiMessage("Factory reset", "Rebooting...");
   scheduleReboot();
 }
 
@@ -210,7 +210,7 @@ static void handleOtaDone() {
   JsonDocument d;
   d["ok"] = true;
   sendJson(d);
-  uiMessage("Оновлено", "Перезапуск...");
+  uiMessage("Update OK", "Rebooting...");
   scheduleReboot();
 }
 
@@ -218,7 +218,7 @@ static void handleOtaUpload() {
   HTTPUpload& u = server.upload();
   if (u.status == UPLOAD_FILE_START) {
     Serial.printf("[ota] %s\n", u.filename.c_str());
-    uiMessage("Оновлення...");
+    uiMessage("Updating...");
     Update.begin(UPDATE_SIZE_UNKNOWN);
   } else if (u.status == UPLOAD_FILE_WRITE) {
     if (Update.write(u.buf, u.currentSize) != u.currentSize) Update.printError(Serial);

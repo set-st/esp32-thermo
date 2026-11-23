@@ -23,7 +23,7 @@ void setup() {
   bool forceAp = encoderButtonDown();
   if (forceAp) {
     Serial.println("[net] button held at boot -> forcing AP mode");
-    uiMessage("Налаштування WiFi", "192.168.4.1");
+    uiMessage("Setup AP mode", "192.168.4.1");
   }
 
   sensorsBegin();
