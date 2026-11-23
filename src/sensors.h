@@ -31,6 +31,9 @@ float dsTemp(int slot);
 void sensorsScanOneWire(JsonArray arr);
 // Fills arr with all I2C addresses that answered.
 void sensorsScanI2c(JsonArray arr);
+// I2C diagnostics: idle line levels, bus recovery if stuck, scan at 100 and 10 kHz,
+// re-init of AHT20/BMP280.
+void sensorsI2cDiag(JsonObject o);
 // Full sensor snapshot for the API.
 void sensorsToJson(JsonObject o);
 

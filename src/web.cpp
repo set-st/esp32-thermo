@@ -207,7 +207,7 @@ static void handleScanI2c(AsyncWebServerRequest* r) {
   JsonDocument d;
   {
     StateGuard g;  // I2C bus is shared with the LCD and sensors
-    sensorsScanI2c(d["found"].to<JsonArray>());
+    sensorsI2cDiag(d.to<JsonObject>());
   }
   sendJson(r, d);
 }

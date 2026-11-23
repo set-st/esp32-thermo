@@ -219,6 +219,47 @@ void sensorsScanI2c(JsonArray arr) {
     if (i2cPresent(a)) arr.add(a);
 }
 
+// Clocks SCL up to 9 times so a slave stuck mid-byte releases SDA, then a STOP.
+static void i2cBusRecover() {
+  Wire.end();
+  pinMode(cfg.pinSda, INPUT_PULLUP);
+  pinMode(cfg.pinScl, OUTPUT_OPEN_DRAIN);
+  for (int i = 0; i < 9 && digitalRead(cfg.pinSda) == LOW; i++) {
+    digitalWrite(cfg.pinScl, LOW);
+    delayMicroseconds(10);
+    digitalWrite(cfg.pinScl, HIGH);
+    delayMicroseconds(10);
+  }
+  pinMode(cfg.pinSda, OUTPUT_OPEN_DRAIN);  // STOP: SDA low -> high while SCL high
+  digitalWrite(cfg.pinSda, LOW);
+  delayMicroseconds(10);
+  digitalWrite(cfg.pinSda, HIGH);
+  delayMicroseconds(10);
+  Wire.begin(cfg.pinSda, cfg.pinScl, 100000);
+}
+
+void sensorsI2cDiag(JsonObject o) {
+  // Idle line levels: both must be HIGH (pull-ups). LOW = stuck slave or short.
+  o["sdaIdle"] = digitalRead(cfg.pinSda);
+  o["sclIdle"] = digitalRead(cfg.pinScl);
+  if (digitalRead(cfg.pinSda) == LOW || digitalRead(cfg.pinScl) == LOW) {
+    i2cBusRecover();
+    o["recovered"] = true;
+    o["sdaAfter"] = digitalRead(cfg.pinSda);
+    o["sclAfter"] = digitalRead(cfg.pinScl);
+  }
+  sensorsScanI2c(o["found"].to<JsonArray>());
+  // Second pass at 10 kHz: tolerates long wires / weak pull-ups.
+  Wire.setClock(10000);
+  sensorsScanI2c(o["found10k"].to<JsonArray>());
+  Wire.setClock(100000);
+  // Re-initialise the sensors right away if they answer now.
+  ahtPresent = bmpPresent = false;
+  probeI2c();
+  o["aht20"] = ahtPresent;
+  o["bmp280"] = bmpPresent;
+}
+
 static double r2(float v) { return roundf(v * 100) / 100.0; }
 
 void sensorsToJson(JsonObject o) {
