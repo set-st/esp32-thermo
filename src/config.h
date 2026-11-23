@@ -27,6 +27,8 @@ struct Config {
   // LCD
   uint8_t lcdAddr;   // 0 = autodetect
   uint8_t lcdCols, lcdRows;
+  uint8_t lcdBlMode;      // backlight: 0 = always on, 1 = auto-off, 2 = off
+  uint16_t lcdBlTimeout;  // auto-off after this many seconds without activity
   uint8_t lcdCharset;  // 1 = Cyrillic ROM, 0 = ROM A00 (transliteration)
   // Encoder
   bool encReverse;

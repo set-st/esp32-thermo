@@ -28,6 +28,8 @@ void configDefaults(Config& c) {
   c.lcdCols = 20;
   c.lcdRows = 4;
   c.lcdCharset = 0;
+  c.lcdBlMode = 0;
+  c.lcdBlTimeout = 300;
   c.encReverse = false;
   c.encStepsPerDetent = 4;
   c.pollMs = 2000;
@@ -96,6 +98,8 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
   l["cols"] = c.lcdCols;
   l["rows"] = c.lcdRows;
   l["charset"] = c.lcdCharset;
+  l["blMode"] = c.lcdBlMode;
+  l["blTimeout"] = c.lcdBlTimeout;
 
   JsonObject e = o["encoder"].to<JsonObject>();
   e["reverse"] = c.encReverse;
@@ -181,6 +185,8 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
   m.num(c.lcdCols, l["cols"], 8, 40, true, "LCD columns");
   m.num(c.lcdRows, l["rows"], 1, 4, true, "LCD rows");
   m.num(c.lcdCharset, l["charset"], 0, 1, false, "LCD charset");
+  m.num(c.lcdBlMode, l["blMode"], 0, 2, false, "Підсвітка");
+  m.num(c.lcdBlTimeout, l["blTimeout"], 10, 3600, false, "Час до вимкнення підсвітки");
 
   JsonVariantConst e = j["encoder"];
   m.flag(c.encReverse, e["reverse"], false);

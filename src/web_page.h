@@ -122,6 +122,8 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
  <div class="card"><h3>Загальні</h3>
   <div class="row">
    <div><label>Інтервал опитування, мс</label><input id="poll" type="number" min="1000" max="60000" step="500"></div>
+   <div><label>Підсвітка дисплея</label><select id="blMode"><option value="0">Завжди увімкнена</option><option value="1">Вимикати, якщо немає дій</option><option value="2">Вимкнена</option></select></div>
+   <div><label>Вимикати через, хв</label><input id="blMin" type="number" min="1" max="60" step="1"></div>
    <div><label>Тиск на LCD</label><select id="punit"><option value="1">мм рт. ст.</option><option value="0">гПа</option></select></div>
   </div>
   <button class="btn" id="sysSave">Зберегти</button>
@@ -184,7 +186,7 @@ async function loadCfg(){
   $('lcdCharset').value=C.lcd.charset;$('encSteps').value=C.encoder.stepsPerDetent;$('encRev').checked=C.encoder.reverse;
   $('ssid').value=C.wifi.ssid;$('hostname').value=C.wifi.hostname;$('apName').textContent=I.apSsid;
   $('wStat').innerHTML=I.staConnected?'<span class="ok">● Підключено до '+C.wifi.ssid+', IP '+I.ip+'</span>':(C.wifi.ssid?'<span class="bad">● Немає підключення до '+C.wifi.ssid+(I.staProblem?': '+I.staProblem:'')+'</span>':'Мережу не налаштовано');
-  $('demo').checked=C.dsDemo;$('poll').value=C.pollMs;$('punit').value=C.pressUnit;
+  $('demo').checked=C.dsDemo;$('poll').value=C.pollMs;$('punit').value=C.pressUnit;$('blMode').value=C.lcd.blMode;$('blMin').value=Math.max(1,Math.round(C.lcd.blTimeout/60));blUi();
   ['wpass','appass'].forEach(id=>{$(id).value='';dirty.delete(id)});
   $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не знайдено'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не знайдено'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} хв`;
 }
@@ -227,7 +229,10 @@ $('wScan').onclick=async()=>{const b=$('wScan');b.disabled=true;b.textContent='�
 $('wSave').onclick=()=>{const w={ssid:$('ssid').value,hostname:$('hostname').value};
   if(dirty.has('wpass'))w.pass=$('wpass').value;if(dirty.has('appass'))w.apPass=$('appass').value;
   if(!w.hostname)return toast('Вкажіть ім\'я хоста');save({wifi:w})};
-$('sysSave').onclick=()=>save({pollMs:+$('poll').value,pressUnit:+$('punit').value});
+function blUi(){$('blMin').disabled=$('blMode').value!='1'}
+$('blMode').onchange=blUi;
+$('sysSave').onclick=()=>{const m=Math.min(60,Math.max(1,parseInt($('blMin').value)||5));
+  save({pollMs:+$('poll').value,pressUnit:+$('punit').value,lcd:{blMode:+$('blMode').value,blTimeout:m*60}})};
 $('reboot').onclick=async()=>{if(!confirm('Перезавантажити?'))return;await api('/api/reboot',{});toast('Перезавантаження…',8000);setTimeout(()=>location.reload(),8000)};
 $('reset').onclick=async()=>{if(!confirm('Скинути ВСІ налаштування, включно з Wi‑Fi?'))return;await api('/api/factory-reset',{});toast('Скинуто. Підключіться до точки доступу пристрою.',10000)};
 $('fwBtn').onclick=()=>{const f=$('fw').files[0];if(!f)return;const fd=new FormData();fd.append('fw',f);
@@ -242,8 +247,8 @@ function drawLcd(cv,lines,cols,rows,on){
   const box=cv.closest('.card').clientWidth-60, pitch=Math.max(2,Math.min(6,Math.floor(box/(cols*6+1))));
   const W=(cols*6+1)*pitch, H=(rows*9+1)*pitch, dpr=window.devicePixelRatio||1;
   cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px';
-  const g=cv.getContext('2d');g.scale(dpr,dpr);g.fillStyle=on?'#1a44c8':'#2b3550';g.fillRect(0,0,W,H);
-  const dot=pitch*0.86, lit=on?'#e9f0ff':'#9aa3bd', off='rgba(255,255,255,0.07)';
+  const g=cv.getContext('2d');g.scale(dpr,dpr);g.fillStyle=on?'#1a44c8':'#0d1d55';g.fillRect(0,0,W,H);
+  const dot=pitch*0.86, lit=on?'#e9f0ff':'#3d5296', off=on?'rgba(255,255,255,0.07)':'rgba(255,255,255,0.03)';
   if(on){g.shadowColor='rgba(170,200,255,0.7)';}
   for(let r=0;r<rows;r++){const t=(lines[r]||'').padEnd(cols,' ');
     for(let c=0;c<cols;c++){const gl=glyph(t[c]);
@@ -253,8 +258,8 @@ function drawLcd(cv,lines,cols,rows,on){
   cv.setAttribute('aria-label',lines.join('\n'))}
 let lastLcd=null;
 function renderLcd(j){lastLcd=j;const cv=$('lcd');cv.parentElement.style.background=j.present?'#1a44c8':'#2b3550';
-  drawLcd(cv,j.lines,j.cols,j.rows,true);
-  $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · фізичний дисплей не знайдено, показано емулятор')}
+  const bl=j.backlight!==false;cv.parentElement.style.background=bl?'#1a44c8':'#0d1d55';drawLcd(cv,j.lines,j.cols,j.rows,bl);
+  $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · фізичний дисплей не знайдено, показано емулятор')+(bl?'':' · підсвітка вимкнена')}
 window.addEventListener('resize',()=>lastLcd&&renderLcd(lastLcd));
 let lcdBusy=false;
 async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))return;lcdBusy=true;

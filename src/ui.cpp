@@ -30,6 +30,25 @@ static float editOffset = 0;
 static uint32_t lastInput = 0, lastDraw = 0, msgUntil = 0;
 static bool dirty = true;
 
+// ---- backlight -----------------------------------------------------------------
+// The I2C backpack (PCF8574) can only switch the backlight on or off.
+static bool blOn = true;
+static uint32_t lastActivity = 0;  // encoder input, virtual input or a popup message
+
+static void setBacklight(bool on) {
+  if (blOn == on) return;
+  blOn = on;
+  if (lcd) on ? lcd->backlight() : lcd->noBacklight();
+}
+
+static bool backlightWanted(uint32_t now) {
+  switch (cfg.lcdBlMode) {
+    case 1: return now - lastActivity < (uint32_t)cfg.lcdBlTimeout * 1000UL;
+    case 2: return false;
+    default: return true;
+  }
+}
+
 // ---- character encoding ------------------------------------------------------
 // All LCD texts are written in UTF-8 Russian and converted to the display's
 // character ROM:
@@ -204,6 +223,7 @@ void uiScreenToJson(JsonObject o) {
   o["cols"] = cfg.lcdCols;
   o["rows"] = cfg.lcdRows;
   o["present"] = lcd != nullptr;
+  o["backlight"] = blOn;
   JsonArray lines = o["lines"].to<JsonArray>();
   for (int r = 0; r < cfg.lcdRows && r < 4; r++) {
     String line;
@@ -262,6 +282,7 @@ static void showMessage(const char* const* lines, int n, uint32_t ms) {
 void uiMessage(const char* l1, const char* l2, uint32_t ms) {
   const char* lines[] = {L(l1), L(l2)};
   showMessage(lines, 2, ms);
+  lastActivity = millis();  // important info (IP, reboot...) wakes the backlight
 }
 
 // "<prefix><value>" if it fits the display width, otherwise just the value.
@@ -608,6 +629,18 @@ void uiLoop() {
   if (b == BtnEvent::None) b = virtBtn;
   virtDelta = 0;
   virtBtn = BtnEvent::None;
+
+  if (d || b != BtnEvent::None) {
+    bool wasDark = !blOn;
+    lastActivity = now;
+    // In auto-off mode the first touch only wakes the display up.
+    if (wasDark && cfg.lcdBlMode == 1) {
+      setBacklight(true);
+      d = 0;
+      b = BtnEvent::None;
+    }
+  }
+  setBacklight(backlightWanted(now));
 
   if (d || b != BtnEvent::None) {
     lastInput = now;
