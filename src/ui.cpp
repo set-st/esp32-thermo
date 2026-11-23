@@ -77,15 +77,36 @@ static void frameEnd() {
     if (!(frameRows & (1 << r))) putLine(r, "");
 }
 
-void uiMessage(const char* l1, const char* l2, uint32_t ms) {
+// Shows up to 4 lines for `ms` milliseconds. A 2-line message on a 4-row LCD
+// is centred vertically; extra lines on a 2-row LCD are dropped.
+static void showMessage(const char* const* lines, int n, uint32_t ms) {
   frameBegin();
-  // on a 4-row LCD the message is centred vertically
-  int r0 = big() ? 1 : 0;
-  putLine(r0, l1);
-  putLine(r0 + 1, l2);
+  int r0 = (big() && n <= 2) ? 1 : 0;
+  for (int i = 0; i < n; i++) putLine(r0 + i, lines[i]);
   frameEnd();
   msgUntil = millis() + ms;
 }
+
+void uiMessage(const char* l1, const char* l2, uint32_t ms) {
+  const char* lines[] = {l1, l2};
+  showMessage(lines, 2, ms);
+}
+
+// "<prefix><value>" if it fits the display width, otherwise just the value.
+static void fit(char* out, size_t n, const char* prefix, const char* value) {
+  if (strlen(prefix) + strlen(value) <= cfg.lcdCols) snprintf(out, n, "%s%s", prefix, value);
+  else snprintf(out, n, "%s", value);
+}
+
+static bool apHasPass() { return strlen(cfg.apPass) >= 8; }
+
+static void fmtApPass(char* out, size_t n) {
+  if (apHasPass()) fit(out, n, "Pass ", cfg.apPass);
+  else snprintf(out, n, "No password");
+}
+
+static int pageCount();
+static bool jumpToNetPage = false;
 
 // Pops up the address on the LCD whenever the device gets a new IP
 // (STA connected / reconnected with another lease, or fallback AP started).
@@ -97,8 +118,20 @@ static void watchNetwork() {
   if (key.isEmpty() || key == lastShown) return;
   lastShown = key;
   if (mode == Mode::Edit) return;  // don't disturb offset editing
-  if (key[0] == 'S') uiMessage("WiFi OK, IP:", key.c_str() + 1, 5000);
-  else uiMessage(netApSsid().c_str(), key.c_str() + 1, 5000);  // "ThermoHub-XXXX" fits 16 cols
+  if (key[0] == 'S') {
+    uiMessage("WiFi OK, IP:", key.c_str() + 1, 5000);
+    return;
+  }
+  // Setup access point: show everything needed to connect, then stay on the network page.
+  char ssid[41], pass[41], ip[41];
+  String apSsid = netApSsid();
+  fit(ssid, sizeof(ssid), "WiFi ", apSsid.c_str());
+  fmtApPass(pass, sizeof(pass));
+  fit(ip, sizeof(ip), "Open ", key.c_str() + 1);
+  const char* lines[] = {"WiFi setup mode", ssid, pass, ip};
+  if (big()) showMessage(lines, 4, 8000);
+  else showMessage(lines + 1, 2, 8000);
+  jumpToNetPage = true;
 }
 
 static void fmtTemp(char* out, size_t n, float t) {
@@ -215,16 +248,25 @@ static void drawPageNet() {
       putLine(1, l);
     }
   } else if (netApActive()) {
-    snprintf(l, sizeof(l), "AP %s", WiFi.softAPIP().toString().c_str());
-    putLine(0, l);
-    putLine(1, netApSsid().c_str());
+    String apSsid = netApSsid();
     if (big()) {
-      snprintf(l, sizeof(l), strlen(cfg.apPass) >= 8 ? "Pass %s" : "Open network", cfg.apPass);
+      fit(l, sizeof(l), "WiFi ", apSsid.c_str());
+      putLine(0, l);
+      fmtApPass(l, sizeof(l));
+      putLine(1, l);
+      fit(l, sizeof(l), "Open ", WiFi.softAPIP().toString().c_str());
       putLine(2, l);
       if (cfg.ssid[0]) {
-        snprintf(l, sizeof(l), "Retry %s", cfg.ssid);
+        fit(l, sizeof(l), "Retry ", cfg.ssid);
         putLine(3, l);
       }
+    } else {
+      // 2 rows: IP on top, SSID and password alternate every 3 s below
+      fit(l, sizeof(l), "AP ", WiFi.softAPIP().toString().c_str());
+      putLine(0, l);
+      if ((millis() / 3000) % 2 == 0) fit(l, sizeof(l), "", apSsid.c_str());
+      else fmtApPass(l, sizeof(l));
+      putLine(1, l);
     }
   } else {
     putLine(0, "WiFi connecting");
@@ -327,6 +369,10 @@ void uiBegin() {
 
 void uiLoop() {
   watchNetwork();
+  if (jumpToNetPage) {
+    jumpToNetPage = false;
+    if (mode == Mode::View) page = pageCount() - 1;  // network page is always last
+  }
   uint32_t now = millis();
   int d = encoderDelta();
   BtnEvent b = encoderButton();
