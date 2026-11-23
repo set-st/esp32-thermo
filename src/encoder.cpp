@@ -7,8 +7,35 @@ static volatile uint8_t encState = 0;
 static int8_t pinA = -1, pinB = -1, pinBtn = -1;
 static int32_t lastDetent = 0;
 
-// Quadrature transition table: index = (prev << 2) | cur
+// Quadrature transition table: index = (prev << 2) | cur  (used for 1 step per detent)
 static const int8_t QDEC[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
+
+// State machines (after Ben Buxton's rotary decoder): a step is counted only after a
+// complete, valid A/B sequence, so contact bounce or a single line twitching
+// (e.g. noise when the button is pressed) never produces steps.
+// Input = (B << 1) | A, rest position 11 (pull-ups).
+static constexpr uint8_t DIR_CW = 0x10, DIR_CCW = 0x20;
+// Full step: 4 transitions per detent, emits at 11.
+static const uint8_t FULL[7][4] = {
+    {0x0, 0x2, 0x4, 0x0},           // start
+    {0x3, 0x0, 0x1, 0x0 | DIR_CW},  // cw final
+    {0x3, 0x2, 0x0, 0x0},           // cw begin
+    {0x3, 0x2, 0x1, 0x0},           // cw next
+    {0x6, 0x0, 0x4, 0x0},           // ccw begin
+    {0x6, 0x5, 0x0, 0x0 | DIR_CCW}, // ccw final
+    {0x6, 0x5, 0x4, 0x0},           // ccw next
+};
+// Half step: 2 transitions per detent, emits at 00 and 11.
+static const uint8_t HALF[6][4] = {
+    {0x3, 0x2, 0x1, 0x0},            // start (00)
+    {0x3 | DIR_CCW, 0x0, 0x1, 0x0},  // ccw begin
+    {0x3 | DIR_CW, 0x2, 0x0, 0x0},   // cw begin
+    {0x3, 0x5, 0x4, 0x0},            // start (11)
+    {0x3, 0x3, 0x4, 0x0 | DIR_CW},   // cw begin (from 11)
+    {0x3, 0x5, 0x3, 0x0 | DIR_CCW},  // ccw begin (from 11)
+};
+static volatile uint8_t fsmState = 0;
+static volatile int32_t encDetents = 0;  // steps counted by the state machine
 
 static volatile uint8_t lastAB = 0;
 
@@ -21,6 +48,18 @@ static void IRAM_ATTR encIsr() {
   if (ch == 3) invalid++;  // both lines changed at once: missed step or noise
   encState = ((encState << 2) | s) & 0x0F;
   encRaw += QDEC[encState];
+
+  // s = (A << 1) | B  ->  state machine input (B << 1) | A
+  uint8_t in = ((s & 1) << 1) | (s >> 1);
+  uint8_t idx = fsmState & 0x0F, st;
+  if (cfg.encStepsPerDetent >= 4) {
+    st = FULL[idx > 6 ? 0 : idx][in];
+  } else {
+    st = HALF[idx > 5 ? 3 : idx][in];  // setting may change at runtime
+  }
+  fsmState = st;
+  if (st & DIR_CW) encDetents++;
+  else if (st & DIR_CCW) encDetents--;
 }
 
 // ---- event log ----
@@ -47,6 +86,7 @@ void encoderDiagToJson(JsonObject o, uint32_t since) {
   pu["b"] = pinB >= 0 && pinB < 34;
   pu["btn"] = pinBtn >= 0 && pinBtn < 34;
   o["raw"] = encRaw;
+  o["steps"] = encDetents;
   o["edgesA"] = edgesA;
   o["edgesB"] = edgesB;
   o["invalid"] = invalid;
@@ -81,17 +121,17 @@ void encoderBegin() {
     setupInput(pinB);
     encState = (digitalRead(pinA) << 1) | digitalRead(pinB);
     lastAB = encState;
+    fsmState = cfg.encStepsPerDetent >= 4 ? 0 : 3;  // both machines start at rest (11)
     attachInterrupt(digitalPinToInterrupt(pinA), encIsr, CHANGE);
     attachInterrupt(digitalPinToInterrupt(pinB), encIsr, CHANGE);
   }
   if (pinBtn >= 0) setupInput(pinBtn);
 }
 
-static int32_t floorDiv(int32_t a, int32_t b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 
 int encoderDelta() {
   if (pinA < 0 || pinB < 0) return 0;
-  int32_t det = floorDiv(encRaw, cfg.encStepsPerDetent ? cfg.encStepsPerDetent : 4);
+  int32_t det = cfg.encStepsPerDetent == 1 ? encRaw : encDetents;
   int d = det - lastDetent;
   lastDetent = det;
   if (cfg.encReverse) d = -d;
