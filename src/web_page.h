@@ -44,6 +44,16 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
 .enc .wide{grid-column:span 3;font-size:13px}
 #nets{margin-top:6px}#nets button{display:flex;justify-content:space-between;width:100%;border:1px solid var(--bd);background:var(--bg);color:var(--fg);padding:8px 10px;border-radius:8px;margin-top:4px;cursor:pointer;font:inherit;text-align:left}
 #nets button:hover{border-color:var(--acc)}#nets .mut{white-space:nowrap;margin-left:8px}
+table.api td{border:0;padding:5px 6px 5px 0;vertical-align:middle}
+table.api td:last-child{width:1%;white-space:nowrap}
+.m{display:inline-block;font:600 11px/1 monospace;padding:4px 6px;border-radius:5px;background:#16a34a22;color:#16a34a}
+.m.post{background:#d9770622;color:#d97706}
+.btn.sm{margin:0 0 0 6px;padding:5px 10px;font-size:13px}
+.apibar{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px;color:var(--mut)}
+#apiPre{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin:6px 0 8px;max-height:420px;overflow:auto;font:12.5px/1.45 ui-monospace,Consolas,"Courier New",monospace;white-space:pre}
+.jk{color:#7c3aed}.js{color:#15803d}.jn{color:#c2410c}.jb{color:#2563eb}.jz{color:#9ca3af}
+@media(prefers-color-scheme:dark){.jk{color:#c4b5fd}.js{color:#86efac}.jn{color:#fdba74}.jb{color:#93c5fd}}
+details summary{cursor:pointer;margin-top:10px}
 #demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
@@ -71,7 +81,24 @@ code{background:var(--bg);padding:1px 5px;border-radius:4px}
   <div class="card"><h3>AHT20</h3><div class="big" id="ahtT">—</div><div class="mut">вологість <span id="ahtH">—</span></div></div>
   <div class="card"><h3>BMP280</h3><div class="big" id="bmpP">—</div><div class="mut"><span id="bmpHpa">—</span> · <span id="bmpT">—</span></div></div>
  </div>
- <div class="card mut">API: <code>GET /api/sensors</code> (JSON) · <code>GET /metrics</code> (Prometheus) · <code>POST /api/offset {"slot":1,"offset":-0.3}</code></div>
+ <div class="card"><h3>API</h3>
+  <table class="api"><tbody id="apiGet"></tbody></table>
+  <div id="apiOut" class="hide">
+   <div class="apibar"><span id="apiSt"></span><span><button class="btn sec sm" id="apiCopy">Копіювати</button><button class="btn sec sm" id="apiClose">✕</button></span></div>
+   <pre id="apiPre"></pre>
+  </div>
+  <details class="mut"><summary>Методи, що змінюють стан (POST)</summary>
+   <table class="api"><tbody>
+    <tr><td><span class="m post">POST</span></td><td><code>/api/config</code></td><td>часткове оновлення налаштувань, напр. <code>{"pollMs":5000}</code></td></tr>
+    <tr><td><span class="m post">POST</span></td><td><code>/api/offset</code></td><td>поправка датчика: <code>{"slot":1,"offset":-0.3}</code></td></tr>
+    <tr><td><span class="m post">POST</span></td><td><code>/api/display/input</code></td><td>енкодер: <code>{"turn":1}</code>, <code>{"press":"click"}</code>, <code>{"press":"long"}</code></td></tr>
+    <tr><td><span class="m post">POST</span></td><td><code>/api/display/charset</code></td><td>тест знакогенератора: <code>{"page":0}</code></td></tr>
+    <tr><td><span class="m post">POST</span></td><td><code>/api/reboot</code></td><td>перезавантаження</td></tr>
+    <tr><td><span class="m post">POST</span></td><td><code>/api/factory-reset</code></td><td>скидання всіх налаштувань</td></tr>
+    <tr><td><span class="m post">POST</span></td><td><code>/update</code></td><td>OTA, multipart з файлом <code>.bin</code></td></tr>
+   </tbody></table>
+  </details>
+ </div>
 </section>
 
 <section id="t-ds" class="hide"><div class="card">
@@ -267,5 +294,31 @@ async function pollLcd(){if(lcdBusy||$('t-mon').classList.contains('hide'))retur
 document.querySelectorAll('.enc button').forEach(b=>b.onclick=async()=>{
   try{lcdBusy=true;renderLcd(await api('/api/display/input',JSON.parse(b.dataset.in)))}catch(e){toast(e.message)}lcdBusy=false});
 pollLcd();setInterval(pollLcd,400);
+const API_GET=[
+  ['/api/sensors','усі показники датчиків'],
+  ['/api/config','налаштування та інформація про пристрій'],
+  ['/api/display','що зараз на дисплеї'],
+  ['/metrics','метрики у форматі Prometheus'],
+  ['/api/scan/onewire','пошук DS18B20 на шині'],
+  ['/api/scan/i2c','пошук пристроїв I2C'],
+  ['/api/scan/wifi','пошук мереж Wi-Fi (кілька секунд)']];
+const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function hlJson(t){return esc(t).replace(/("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,m=>{
+  let c='jn';if(m[0]=='"')c=/:$/.test(m)?'jk':'js';else if(m=='true'||m=='false')c='jb';else if(m=='null')c='jz';
+  return `<span class="${c}">${m}</span>`})}
+$('apiGet').innerHTML=API_GET.map(([p,d],i)=>`<tr><td><span class="m">GET</span></td><td><a href="${p}" target="_blank"><code>${p}</code></a></td><td class="mut">${d}</td><td><button class="btn sec sm" data-api="${i}">Отримати</button></td></tr>`).join('');
+let apiText='';
+document.querySelectorAll('[data-api]').forEach(b=>b.onclick=async()=>{
+  const p=API_GET[b.dataset.api][0],t0=performance.now();b.disabled=true;
+  $('apiOut').classList.remove('hide');$('apiSt').textContent='GET '+p+' …';$('apiPre').textContent='';
+  try{const r=await fetch(p,{cache:'no-store'});const txt=await r.text();const ms=Math.round(performance.now()-t0);
+    let html;try{apiText=JSON.stringify(JSON.parse(txt),null,2);html=hlJson(apiText)}catch(e){apiText=txt;html=esc(txt)}
+    $('apiSt').textContent=`GET ${location.origin}${p} · HTTP ${r.status} · ${ms} мс · ${txt.length} байт`;$('apiPre').innerHTML=html;
+  }catch(e){$('apiSt').textContent='Помилка: '+e.message}b.disabled=false});
+$('apiCopy').onclick=()=>{
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(apiText).then(()=>toast('Скопійовано'));return}
+  const ta=document.createElement('textarea');ta.value=apiText;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');toast('Скопійовано')}catch(e){toast('Не вдалося скопіювати')}ta.remove()};
+$('apiClose').onclick=()=>$('apiOut').classList.add('hide');
 fillPins();loadCfg().catch(e=>toast(e.message));poll();setInterval(poll,2000);
 </script></body></html>)HTML";
