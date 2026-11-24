@@ -503,16 +503,16 @@ static void drawPageDs() {
   }
   char l[41], a[12], b[12];
   if (big()) {
-    // "1 Name      22.1°C D" — name column, value right-aligned at a fixed column,
+    // "1 Name     22.1°C ▅D" — name, value at a fixed column, space, fill indicator,
     // last column reserved for the demo marker.
-    int nameW = max(0, (int)cfg.lcdCols - 2 - 7 - 2);
+    int nameW = max(0, (int)cfg.lcdCols - 2 - 7 - 3);
     for (int i = 0; i < DS_COUNT; i++) {
       float t = dsTemp(i);
       if (!isnan(t)) snprintf(a, sizeof(a), "%5.1f%cC", t, DEG);
       else snprintf(a, sizeof(a), cfg.ds[i].addr[0] ? " --.-  " : "  ---  ");
       char name[41];
       marquee(name, sizeof(name), lcdName(i), nameW);
-      snprintf(l, sizeof(l), "%d %s%s%c", i + 1, name, a, bars[i]);
+      snprintf(l, sizeof(l), "%d %s%s %c", i + 1, name, a, bars[i]);
       putLine(i, l);
     }
     return;
