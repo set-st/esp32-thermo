@@ -53,10 +53,10 @@ static void onJsonPost(const char* path, JsonHandler fn) {
   server.on(
       path, HTTP_POST,
       [fn](AsyncWebServerRequest* r) {
-        if (!r->_tempObject) return sendError(r, 400, "JSON body required");
+        if (!r->_tempObject) return sendError(r, 400, "Потрібне тіло запиту у форматі JSON");
         JsonDocument body;
         if (DeserializationError e = deserializeJson(body, (const char*)r->_tempObject))
-          return sendError(r, 400, String("Bad JSON: ") + e.c_str());
+          return sendError(r, 400, String("Некоректний JSON: ") + e.c_str());
         fn(r, body);
       },
       nullptr,
@@ -180,8 +180,8 @@ static void handlePostConfig(AsyncWebServerRequest* r, JsonDocument& body) {
 // POST /api/offset {"slot":1..4, "offset":0.5}
 static void handleOffset(AsyncWebServerRequest* r, JsonDocument& body) {
   int slot = body["slot"] | 0;
-  if (slot < 1 || slot > DS_COUNT) return sendError(r, 400, "slot must be 1..4");
-  if (!body["offset"].is<float>()) return sendError(r, 400, "offset required");
+  if (slot < 1 || slot > DS_COUNT) return sendError(r, 400, "slot має бути від 1 до 4");
+  if (!body["offset"].is<float>()) return sendError(r, 400, "Не вказано offset");
   float o = body["offset"];
   if (isnan(o) || fabsf(o) > OFFSET_LIMIT) return sendError(r, 400, "Поправка має бути в межах ±20");
   {
@@ -231,7 +231,7 @@ static void handleDisplayInput(AsyncWebServerRequest* r, JsonDocument& body) {
   const char* p = body["press"] | "";
   int press = strcmp(p, "click") == 0 ? 1 : strcmp(p, "long") == 0 ? 2 : 0;
   int turn = body["turn"] | 0;
-  if (!turn && !press) return sendError(r, 400, "turn or press required");
+  if (!turn && !press) return sendError(r, 400, "Потрібно вказати turn або press");
   JsonDocument d;
   {
     StateGuard g;
@@ -371,7 +371,7 @@ void webBegin() {
   server.on("/api/reboot", HTTP_POST, handleReboot);
   server.on("/api/factory-reset", HTTP_POST, handleFactoryReset);
   server.on("/update", HTTP_POST, handleOtaDone, handleOtaUpload);
-  server.onNotFound([](AsyncWebServerRequest* r) { sendError(r, 404, "Not found"); });
+  server.onNotFound([](AsyncWebServerRequest* r) { sendError(r, 404, "Не знайдено"); });
   server.begin();
 }
 

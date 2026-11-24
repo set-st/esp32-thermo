@@ -195,45 +195,25 @@ SPLC780D1‑002A) в адмінці можна вибрати «Кирилиця
 
 ## API
 
-Авторизації немає — пристрій розрахований на закриту локальну мережу.
+Повний довідник з усіма полями, допустимими значеннями, помилками і прикладами —
+**[docs/API.md](docs/API.md)**. Коротко:
 
-| Метод | Шлях                   | Опис |
-|-------|------------------------|------|
-| GET   | `/api/sensors`         | усі показники (JSON, CORS відкритий) |
-| GET   | `/metrics`             | формат Prometheus |
-| GET   | `/api/config`          | налаштування (пароль Wi‑Fi не віддається) + info |
-| POST  | `/api/config`          | часткове оновлення налаштувань (JSON), відповідь `{ok, reboot}` |
-| POST  | `/api/offset`          | `{"slot":1,"offset":-0.3}` — поправка одного датчика |
-| GET   | `/api/scan/onewire`    | знайдені на шині DS18B20 |
-| GET   | `/api/scan/i2c`        | знайдені I2C‑адреси |
-| GET   | `/api/scan/wifi`       | список мереж |
-| GET   | `/api/display`         | поточний вміст LCD (`lines`, `cols`, `rows`) |
-| POST  | `/api/display/input`   | віртуальний енкодер: `{"turn":1}`, `{"turn":-1}`, `{"press":"click"}`, `{"press":"long"}` |
-| POST  | `/api/display/charset` | тест знакогенератора на LCD: `{"page":0}` (A0–DF), `1` (E0–FF, 80–9F), `2` (абетка) |
-| GET   | `/api/update`          | стан оновлення через інтернет |
-| POST  | `/api/update/check`    | перевірити останній реліз на GitHub |
-| POST  | `/api/update/install`  | встановити знайдене оновлення (у фоні, прогрес у `/api/update`) |
-| POST  | `/api/reboot`          | перезавантаження |
-| POST  | `/api/factory-reset`   | скидання всіх налаштувань |
-| POST  | `/update`              | OTA, multipart з `.bin` |
+| Метод | Шлях | Опис |
+|-------|------|------|
+| GET   | `/api/sensors` | усі показники (JSON, CORS відкритий) |
+| GET   | `/metrics` | формат Prometheus |
+| GET / POST | `/api/config` | налаштування: читання / часткова зміна |
+| POST  | `/api/offset` | поправка одного датчика |
+| GET   | `/api/display` | вміст LCD і діагностика енкодера |
+| POST  | `/api/display/input`, `/api/display/charset` | віртуальний енкодер, тест знакогенератора |
+| GET   | `/api/scan/onewire`, `/api/scan/i2c`, `/api/scan/wifi` | пошук пристроїв і мереж |
+| GET / POST | `/api/update`, `/api/update/check`, `/api/update/install` | оновлення через інтернет |
+| POST  | `/update` | оновлення з файлу |
+| POST  | `/api/reboot`, `/api/factory-reset` | перезавантаження, скидання |
 
-Приклад `/api/sensors`:
-
-```json
-{
-  "ds18b20": [
-    {"slot":1,"name":"Подача","addr":"28FF641E8516039C","ok":true,"offset":-0.3,"raw":45.12,"temp":44.82}
-  ],
-  "aht20":  {"ok":true,"temp":23.41,"humidity":41.2},
-  "bmp280": {"ok":true,"temp":23.9,"pressure_hpa":1001.3,"pressure_mmhg":751.04},
-  "age_ms": 512, "uptime_s": 3600,
-  "wifi": {"connected":true,"rssi":-58,"ip":"192.168.1.50"}
-}
-```
-
-Приклад зміни налаштувань: `{"pins":{"onewire":5}}`. Зміна пінів, Wi‑Fi, імені хоста
-та параметрів LCD застосовується після перезавантаження (воно виконується автоматично),
-а назви, адреси, поправки датчиків, шрифт дисплея та інтервал опитування — одразу.
+Авторизації немає — пристрій розрахований на закриту локальну мережу. Тіло POST —
+JSON із `Content-Type: application/json`; значення неправильного типу відхиляються
+з помилкою `400`.
 
 ## Архітектура
 

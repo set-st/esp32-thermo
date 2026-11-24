@@ -105,6 +105,7 @@ details summary{cursor:pointer;margin-top:10px}
    <div class="apibar"><span id="apiSt"></span><span><button class="btn sec sm" id="apiCopy">Копіювати</button><button class="btn sec sm" id="apiClose">✕</button></span></div>
    <pre id="apiPre"></pre>
   </div>
+  <p class="mut">Повний довідник з усіма полями й помилками: <a href="https://github.com/set-st/esp32-thermo/blob/main/docs/API.md" target="_blank">docs/API.md</a></p>
   <details class="mut"><summary>Методи, що змінюють стан (POST)</summary>
    <table class="api"><tbody>
     <tr><td><span class="m post">POST</span></td><td><code>/api/config</code></td><td>часткове оновлення налаштувань, напр. <code>{"pollMs":5000}</code></td></tr>
