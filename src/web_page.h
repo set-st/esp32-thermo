@@ -6,8 +6,9 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ThermoHub</title>
 <style>
-:root{--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--mut:#6b7280;--acc:#2563eb;--bad:#dc2626;--ok:#16a34a;--bd:#e5e7eb}
-@media(prefers-color-scheme:dark){:root{--bg:#111318;--card:#1b1e25;--fg:#e6e8ec;--mut:#9aa1ad;--bd:#2b2f38}}
+:root{color-scheme:light dark;--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--mut:#6b7280;--acc:#2563eb;--link:#2563eb;--bad:#dc2626;--ok:#16a34a;--bd:#e5e7eb}
+a{color:var(--link)}
+@media(prefers-color-scheme:dark){:root{--bg:#111318;--card:#1b1e25;--fg:#e6e8ec;--mut:#9aa1ad;--bd:#2b2f38;--link:#93c5fd}}
 *{box-sizing:border-box}body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
 header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);flex-wrap:wrap}
 header b{font-size:18px}#st{color:var(--mut);font-size:13px;margin-left:auto}
@@ -90,6 +91,7 @@ details summary{cursor:pointer;margin-top:10px}
    <div class="encdiag">
     <div class="leds"><span class="led" id="ledA"><i></i>A</span><span class="led" id="ledB"><i></i>B</span><span class="led" id="ledS"><i></i>SW</span></div>
     <div class="mut" id="encCnt"></div>
+    <div class="mut" id="encNote"></div>
     <div class="warn" id="encWarn"></div>
    </div>
   </div>
@@ -200,6 +202,9 @@ details summary{cursor:pointer;margin-top:10px}
 <script>
 const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// 93780 -> "1 д 2 год", 3900 -> "1 год 5 хв", 300 -> "5 хв"
+function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+  return d?`${d} д ${h} год`:h?`${h} год ${m} хв`:`${m} хв`}
 // fill indicator styles — same as BAR_STYLES / barGlyph() in ui.cpp
 const BAR_STYLES=[['Трикутник',8,0],['Стовпчик на всю ширину',8,0],['Вузький стовпчик',8,0],['Рамка із заповненням',6,1],['Вузька шкала в рамці',6,1],['Термометр',5,1],['Сходинки',5,0]];
 let barStyleCur=5;
@@ -222,9 +227,13 @@ async function api(url,body,method){
   if(!r.ok||j.ok===false)throw new Error(j.error||('HTTP '+r.status));return j}
 const f1=v=>v==null?'—':v.toFixed(1);
 
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+// tabs; the open tab is kept in the URL (#mon, #ds, #pins, #wifi, #sys) for links/reloads
+function showTab(t){const b=document.querySelector(`nav button[data-t="${t}"]`);if(!b)return;
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x==b));
-  document.querySelectorAll('main section').forEach(s=>s.classList.toggle('hide',s.id!='t-'+b.dataset.t))});
+  document.querySelectorAll('main section').forEach(s=>s.classList.toggle('hide',s.id!='t-'+t))}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{showTab(b.dataset.t);history.replaceState(null,'','#'+b.dataset.t)});
+window.addEventListener('hashchange',()=>showTab(location.hash.slice(1)));
+if(location.hash)showTab(location.hash.slice(1));
 ['wpass','appass'].forEach(id=>$(id).addEventListener('input',()=>dirty.add(id)));
 
 async function save(part,msg){
@@ -260,7 +269,7 @@ async function loadCfg(){
   $('wStat').innerHTML=I.staConnected?'<span class="ok">● Підключено до '+C.wifi.ssid+', IP '+I.ip+'</span>':(C.wifi.ssid?'<span class="bad">● Немає підключення до '+C.wifi.ssid+(I.staProblem?': '+I.staProblem:'')+'</span>':'Мережу не налаштовано');
   $('demo').checked=C.dsDemo;$('barStyle').value=C.lcd.barStyle;barPreview();$('poll').value=C.pollMs;$('punit').value=C.pressUnit;$('blMode').value=C.lcd.blMode;$('blMin').value=Math.max(1,Math.round(C.lcd.blTimeout/60));blUi();
   ['wpass','appass'].forEach(id=>{$(id).value='';dirty.delete(id)});
-  $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не знайдено'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не знайдено'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} хв`;
+  $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не знайдено'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не знайдено'} · RAM ${Math.round(I.freeHeap/1024)} КБ · працює ${fmtUp(I.uptime_s)}`;
 }
 
 async function poll(){
@@ -270,7 +279,7 @@ async function poll(){
     const a=S.aht20,b=S.bmp280;
     $('ahtT').textContent=a.ok?f1(a.temp)+' °C':'немає даних';$('ahtH').textContent=a.ok?f1(a.humidity)+' %':'—';
     $('bmpP').textContent=b.ok?f1(b.pressure_mmhg)+' мм':'немає даних';$('bmpHpa').textContent=b.ok?f1(b.pressure_hpa)+' гПа':'—';$('bmpT').textContent=b.ok?f1(b.temp)+' °C':'—';
-    $('st').textContent=(S.wifi.connected?`${S.wifi.ip} · ${S.wifi.rssi} dBm`:`точка доступу ${S.wifi.ip}`)+` · ${Math.round(S.uptime_s/60)} хв`;
+    $('st').textContent=(S.wifi.connected?`${S.wifi.ip} · ${S.wifi.rssi} dBm`:`точка доступу ${S.wifi.ip}`)+` · працює ${fmtUp(S.uptime_s)}`;
     updDsLive();
   }catch(e){$('st').textContent='немає зв\'язку з пристроєм'}}
 
@@ -357,7 +366,8 @@ function renderEnc(e){
   const led=(id,v,pin)=>{const el=$(id);el.classList.toggle('lo',v===0);el.classList.toggle('hi',v===1);el.title=pin>=0?`GPIO${pin}: ${v===0?'LOW (0)':'HIGH (1)'}`:'не підключено'};
   led('ledA',e.level.a,e.pins.a);led('ledB',e.level.b,e.pins.b);led('ledS',e.level.btn,e.pins.btn);
   $('encCnt').textContent=`GPIO A${e.pins.a} B${e.pins.b} SW${e.pins.btn} · фронти A: ${e.edgesA}, B: ${e.edgesB} · лічильник ${e.raw} · кроків на клацання ${e.stepsPerDetent}`;
-  const w=[];['a','b','btn'].forEach(k=>{if(e.pins[k]>=34)w.push(`GPIO${e.pins[k]} (${k=='btn'?'SW':k.toUpperCase()}) без внутрішньої підтяжки — потрібен резистор 10 кОм на 3.3 В`)});
+  const w=[],note=[];['a','b','btn'].forEach(k=>{if(e.pins[k]>=34)note.push(`GPIO${e.pins[k]} (${k=='btn'?'SW':k.toUpperCase()}) без внутрішньої підтяжки: потрібна підтяжка на модулі енкодера (вивід + на 3.3 В) або резистор 10 кОм`)});
+  $('encNote').textContent=note.join(' · ');
   if(e.invalid)w.push(`Пропущені кроки / шум: ${e.invalid}`);
   if(e.edgesA>20&&e.edgesB==0)w.push('Лінія B не змінюється — перевірте підключення DT');
   if(e.edgesB>20&&e.edgesA==0)w.push('Лінія A не змінюється — перевірте підключення CLK');
@@ -394,7 +404,7 @@ $('apiCopy').onclick=()=>{
   const ta=document.createElement('textarea');ta.value=apiText;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
   try{document.execCommand('copy');toast('Скопійовано')}catch(e){toast('Не вдалося скопіювати')}ta.remove()};
 $('apiClose').onclick=()=>$('apiOut').classList.add('hide');
-function fmtAgo(s){return s<90?'щойно':s<5400?Math.round(s/60)+' хв тому':s<172800?Math.round(s/3600)+' год тому':Math.round(s/86400)+' дн тому'}
+function fmtAgo(s){return s<90?'щойно':s<3600?Math.round(s/60)+' хв тому':s<172800?Math.round(s/3600)+' год тому':Math.round(s/86400)+' дн тому'}
 function renderUpd(u){
   let t=`Поточна версія: <b>${esc(u.current)}</b> · репозиторій ${esc(u.repo)}`;
   if(u.checked)t+=`<br>Перевірено ${fmtAgo(u.checkedAgo_s)}: `+(u.error?`<span class="bad">${esc(u.error)}</span>`:u.available?`доступна <b>${esc(u.latest)}</b>`:`встановлено останню версію (${esc(u.latest)})`);
