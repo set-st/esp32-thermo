@@ -155,17 +155,26 @@ static void lcdText(char* out, size_t n, const char* in) {
 // In Cyrillic mode slots 1..6 hold Є є Ї ї Ґ ґ; every other slot is handed out per
 // frame to the fill levels that are visible right now.
 //
-// Fill indicator: a right triangle growing from the bottom-left corner,
-// 8 levels = 8 pixel rows; row widths from the bottom: 1,2,2,3,4,4,5,5 dots.
-static const uint8_t BAR_W[8] = {1, 2, 2, 3, 4, 4, 5, 5};
+// Fill indicator: a thermometer. The bulb is always filled, the "mercury" rises in
+// the tube in 5 steps (level 0 = empty tube, 5 = full), so the scale is visible
+// even at 0 %.
+//   .###.   cap
+//   .#?#.   tube, row filled when level >= 5
+//   .#?#.                              >= 4
+//   .#?#.                              >= 3
+//   .#?#.                              >= 2
+//   .#?#.                              >= 1
+//   #####   bulb
+//   .###.
+static constexpr int BAR_LEVELS = 5;
 static int8_t slotLevel[8] = {-1, -1, -1, -1, -1, -1, -1, -1};  // bar level held by a slot
 static int loadedCharset = -1;
 
 static void barGlyph(uint8_t level, uint8_t rows[8]) {
-  for (int r = 0; r < 8; r++) {  // r = 0 is the top pixel row
-    int fromBottom = 7 - r;
-    rows[r] = fromBottom < level ? (0x1F << (5 - BAR_W[fromBottom])) & 0x1F : 0;
-  }
+  rows[0] = 0b01110;
+  for (int r = 1; r <= 5; r++) rows[r] = (6 - r) <= level ? 0b01110 : 0b01010;
+  rows[6] = 0b11111;
+  rows[7] = 0b01110;
 }
 
 static bool slotForBars(int s) { return !(cfg.lcdCharset == 1 && s >= 1 && s <= UKR_COUNT); }
@@ -179,13 +188,14 @@ static void cgramSync() {
     cgramSync();
 }
 
-// levels[i] in 0..8 -> codes[i]: ' ' for 0, otherwise a CGRAM code showing that
-// level. If there are more distinct levels than free slots, close levels share one.
-static void barCodes(const uint8_t* levels, int n, char* codes) {
+// levels[i] in 0..BAR_LEVELS (or -1 = no indicator) -> codes[i]: ' ' for -1, otherwise
+// a CGRAM code showing that level. If there are more distinct levels than free slots,
+// close levels share one.
+static void barCodes(const int8_t* levels, int n, char* codes) {
   uint8_t want[8];
   int nw = 0;
   for (int i = 0; i < n; i++) {
-    bool seen = levels[i] == 0;
+    bool seen = levels[i] < 0;
     for (int k = 0; k < nw && !seen; k++) seen = want[k] == levels[i];
     if (!seen) want[nw++] = levels[i];
   }
@@ -233,7 +243,7 @@ static void barCodes(const uint8_t* levels, int n, char* codes) {
   }
 
   for (int i = 0; i < n; i++) {
-    if (levels[i] == 0 || nr == 0) {
+    if (levels[i] < 0 || nr == 0) {
       codes[i] = ' ';
       continue;
     }
@@ -253,10 +263,10 @@ static const char* romToUtf8(uint8_t b) {
     buf[1] = 0;
     return buf;
   }
-  if (b >= 0x08 && b <= 0x0F) {  // CGRAM alias: fill indicator -> U+2581..U+2588 (▁..█)
+  if (b >= 0x08 && b <= 0x0F) {  // CGRAM alias: fill indicator level 0..5 -> U+2581..U+2586
     int lv = slotLevel[b - 0x08];
-    if (lv < 1 || lv > 8) return " ";
-    uint32_t cp = 0x2580 + lv;
+    if (lv < 0 || lv > BAR_LEVELS) return " ";
+    uint32_t cp = 0x2581 + lv;
     buf[0] = 0xE0 | (cp >> 12);
     buf[1] = 0x80 | ((cp >> 6) & 0x3F);
     buf[2] = 0x80 | (cp & 0x3F);
@@ -494,10 +504,10 @@ static void val5(char* out, size_t n, float v) {
 static void drawPageDs() {
   char bars[DS_COUNT];
   if (big()) {
-    uint8_t levels[DS_COUNT];
+    int8_t levels[DS_COUNT];
     for (int i = 0; i < DS_COUNT; i++) {
       float f = dsFill(i);
-      levels[i] = isnan(f) ? 0 : (uint8_t)lroundf(f * 8);
+      levels[i] = isnan(f) ? -1 : (int8_t)lroundf(f * BAR_LEVELS);
     }
     barCodes(levels, DS_COUNT, bars);
   }
