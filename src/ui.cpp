@@ -155,40 +155,65 @@ static void lcdText(char* out, size_t n, const char* in) {
 // In Cyrillic mode slots 1..6 hold Є є Ї ї Ґ ґ; every other slot is handed out per
 // frame to the fill levels that are visible right now.
 //
-// Fill indicator: a thermometer. The bulb is always filled, the "mercury" rises in
-// the tube in 5 steps (level 0 = empty tube, 5 = full), so the scale is visible
-// even at 0 %.
-//   .###.   cap
-//   .#?#.   tube, row filled when level >= 5
-//   .#?#.                              >= 4
-//   .#?#.                              >= 3
-//   .#?#.                              >= 2
-//   .#?#.                              >= 1
-//   #####   bulb
-//   .###.
-static constexpr int BAR_LEVELS = 5;
+// Fill indicator styles (cfg.barStyle). levels = number of steps above empty;
+// zero = the empty state is drawn too (outline styles), otherwise 0 % is blank.
+// Rows are top to bottom, 5 bits each, bit 4 = leftmost dot.
+struct BarStyle { const char* name; uint8_t levels; bool zero; };
+static const BarStyle BAR_STYLES[] = {
+    {"triangle", 8, false},       // 0 right triangle from the bottom-left corner
+    {"column", 8, false},         // 1 full-width level column
+    {"narrow column", 8, false},  // 2 3-dot column, centred
+    {"frame", 6, true},           // 3 outline with fill
+    {"narrow frame", 6, true},    // 4 narrow outlined scale
+    {"thermometer", 5, true},     // 5 bulb + mercury
+    {"steps", 5, false},          // 6 signal-strength staircase
+};
+static constexpr int BAR_STYLE_COUNT = sizeof(BAR_STYLES) / sizeof(BAR_STYLES[0]);
 static int8_t slotLevel[8] = {-1, -1, -1, -1, -1, -1, -1, -1};  // bar level held by a slot
-static int loadedCharset = -1;
+static int loadedCharset = -1, loadedStyle = -1;  // what is currently in CGRAM
+
+static const BarStyle& barStyle() { return BAR_STYLES[cfg.barStyle < BAR_STYLE_COUNT ? cfg.barStyle : 5]; }
 
 static void barGlyph(uint8_t level, uint8_t rows[8]) {
-  rows[0] = 0b01110;
-  for (int r = 1; r <= 5; r++) rows[r] = (6 - r) <= level ? 0b01110 : 0b01010;
-  rows[6] = 0b11111;
-  rows[7] = 0b01110;
+  static const uint8_t TRI_W[8] = {1, 2, 2, 3, 4, 4, 5, 5};
+  static const uint8_t STEP_H[5] = {2, 3, 5, 6, 8};
+  for (int r = 0; r < 8; r++) {  // r = 0 is the top pixel row
+    int fb = 7 - r;               // row index from the bottom
+    uint8_t v = 0;
+    switch (cfg.barStyle) {
+      case 0: v = fb < level ? (0x1F << (5 - TRI_W[fb])) & 0x1F : 0; break;
+      case 1: v = fb < level ? 0x1F : 0; break;
+      case 2: v = fb < level ? 0x0E : 0; break;
+      case 3: v = (r == 0 || r == 7) ? 0x1F : ((6 - r) < level ? 0x1F : 0x11); break;
+      case 4: v = (r == 0 || r == 7 || (6 - r) < level) ? 0x0E : 0x0A; break;
+      case 6:
+        for (int x = 0; x < 5; x++)
+          if (x < level && fb < STEP_H[x]) v |= 1 << (4 - x);
+        break;
+      default:  // 5 thermometer
+        v = r == 0 ? 0x0E : r <= 5 ? ((6 - r) <= level ? 0x0E : 0x0A) : r == 6 ? 0x1F : 0x0E;
+    }
+    rows[r] = v;
+  }
 }
 
 static bool slotForBars(int s) { return !(cfg.lcdCharset == 1 && s >= 1 && s <= UKR_COUNT); }
 
 // (Re)load Ukrainian glyphs when the charset changes; forget bar slots.
 static void cgramSync() {
-  if (!lcd || loadedCharset == cfg.lcdCharset) return;
+  if (!lcd) return;
+  if (loadedStyle != cfg.barStyle) {  // other style: all bar glyphs must be redrawn
+    loadedStyle = cfg.barStyle;
+    for (int i = 0; i < 8; i++) slotLevel[i] = -1;
+  }
+  if (loadedCharset == cfg.lcdCharset) return;
   loadedCharset = cfg.lcdCharset;
   for (int i = 0; i < 8; i++) slotLevel[i] = -1;
   if (cfg.lcdCharset == 1)
     cgramSync();
 }
 
-// levels[i] in 0..BAR_LEVELS (or -1 = no indicator) -> codes[i]: ' ' for -1, otherwise
+// levels[i] in 0..style levels (or -1 = no indicator) -> codes[i]: ' ' for -1, otherwise
 // a CGRAM code showing that level. If there are more distinct levels than free slots,
 // close levels share one.
 static void barCodes(const int8_t* levels, int n, char* codes) {
@@ -263,9 +288,9 @@ static const char* romToUtf8(uint8_t b) {
     buf[1] = 0;
     return buf;
   }
-  if (b >= 0x08 && b <= 0x0F) {  // CGRAM alias: fill indicator level 0..5 -> U+2581..U+2586
+  if (b >= 0x08 && b <= 0x0F) {  // CGRAM alias: fill indicator level 0..8 -> U+2581..U+2589
     int lv = slotLevel[b - 0x08];
-    if (lv < 0 || lv > BAR_LEVELS) return " ";
+    if (lv < 0 || lv > 8) return " ";
     uint32_t cp = 0x2581 + lv;
     buf[0] = 0xE0 | (cp >> 12);
     buf[1] = 0x80 | ((cp >> 6) & 0x3F);
@@ -343,6 +368,7 @@ void uiScreenToJson(JsonObject o) {
   o["rows"] = cfg.lcdRows;
   o["present"] = lcd != nullptr;
   o["backlight"] = blOn;
+  o["barStyle"] = cfg.barStyle;
   o["blMode"] = cfg.lcdBlMode;
   if (cfg.lcdBlMode == 1 && blOn) {  // seconds until auto-off
     uint32_t total = (uint32_t)cfg.lcdBlTimeout * 1000UL, idle = millis() - lastActivity;
@@ -507,7 +533,10 @@ static void drawPageDs() {
     int8_t levels[DS_COUNT];
     for (int i = 0; i < DS_COUNT; i++) {
       float f = dsFill(i);
-      levels[i] = isnan(f) ? -1 : (int8_t)lroundf(f * BAR_LEVELS);
+      const BarStyle& st = barStyle();
+      int lv = isnan(f) ? -1 : (int)lroundf(f * st.levels);
+      if (lv == 0 && !st.zero) lv = -1;  // 0 % is blank for styles without an outline
+      levels[i] = lv;
     }
     barCodes(levels, DS_COUNT, bars);
   }

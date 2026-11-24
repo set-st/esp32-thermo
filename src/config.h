@@ -30,7 +30,8 @@ struct Config {
   uint8_t lcdCols, lcdRows;
   uint8_t lcdBlMode;      // backlight: 0 = always on, 1 = auto-off, 2 = off
   uint16_t lcdBlTimeout;  // auto-off after this many seconds without activity
-  uint8_t lcdCharset;  // 1 = Cyrillic ROM, 0 = ROM A00 (transliteration)
+  uint8_t lcdCharset;
+  uint8_t barStyle;    // fill indicator glyph style, see BAR_STYLES in ui.cpp  // 1 = Cyrillic ROM, 0 = ROM A00 (transliteration)
   // Encoder
   bool encReverse;
   uint8_t encStepsPerDetent;  // 1, 2 or 4

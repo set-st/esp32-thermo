@@ -28,6 +28,7 @@ void configDefaults(Config& c) {
   c.lcdCols = 20;
   c.lcdRows = 4;
   c.lcdCharset = 0;
+  c.barStyle = 5;  // thermometer
   c.lcdBlMode = 0;
   c.lcdBlTimeout = 300;
   c.encReverse = false;
@@ -100,6 +101,7 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
   l["cols"] = c.lcdCols;
   l["rows"] = c.lcdRows;
   l["charset"] = c.lcdCharset;
+  l["barStyle"] = c.barStyle;
   l["blMode"] = c.lcdBlMode;
   l["blTimeout"] = c.lcdBlTimeout;
 
@@ -125,12 +127,19 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
 // ---- merge helpers -------------------------------------------------------
 
 namespace {
+// Absent key or null = leave the value unchanged. A present value of the wrong type
+// is an error (instead of being silently ignored), so API clients get a clear answer.
 struct Merger {
   String err;
   bool reboot = false;
 
+  void fail(const char* field, const char* what) {
+    if (err.isEmpty()) err = String(field) + ": " + what;
+  }
+
   void str(char* dst, size_t cap, JsonVariantConst v, bool needsReboot, const char* field) {
-    if (!v.is<const char*>()) return;
+    if (v.isNull()) return;
+    if (!v.is<const char*>()) return fail(field, "очікується рядок");
     const char* s = v.as<const char*>();
     if (strlen(s) >= cap) {
       if (err.isEmpty()) err = String(field) + ": задовге значення";
@@ -144,7 +153,8 @@ struct Merger {
 
   template <typename T>
   void num(T& dst, JsonVariantConst v, long lo, long hi, bool needsReboot, const char* field) {
-    if (!v.is<long>()) return;
+    if (v.isNull()) return;
+    if (!v.is<long>()) return fail(field, "очікується ціле число");
     long x = v.as<long>();
     if (x < lo || x > hi) {
       if (err.isEmpty()) err = String(field) + ": поза допустимим діапазоном";
@@ -156,8 +166,9 @@ struct Merger {
     }
   }
 
-  void flag(bool& dst, JsonVariantConst v, bool needsReboot) {
-    if (!v.is<bool>()) return;
+  void flag(bool& dst, JsonVariantConst v, bool needsReboot, const char* field) {
+    if (v.isNull()) return;
+    if (!v.is<bool>()) return fail(field, "очікується true або false");
     bool x = v.as<bool>();
     if (dst != x) {
       dst = x;
@@ -186,25 +197,30 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
 
   JsonVariantConst l = j["lcd"];
   m.num(c.lcdAddr, l["addr"], 0, 0x7F, true, "Адреса LCD");
-  m.num(c.lcdCols, l["cols"], 8, 40, true, "LCD columns");
-  m.num(c.lcdRows, l["rows"], 1, 4, true, "LCD rows");
-  m.num(c.lcdCharset, l["charset"], 0, 1, false, "LCD charset");
+  m.num(c.lcdCols, l["cols"], 8, 40, true, "lcd.cols");
+  m.num(c.lcdRows, l["rows"], 1, 4, true, "lcd.rows");
+  m.num(c.lcdCharset, l["charset"], 0, 1, false, "lcd.charset");
+  m.num(c.barStyle, l["barStyle"], 0, 6, false, "lcd.barStyle");
   m.num(c.lcdBlMode, l["blMode"], 0, 2, false, "Підсвітка");
   m.num(c.lcdBlTimeout, l["blTimeout"], 10, 3600, false, "Час до вимкнення підсвітки");
 
   JsonVariantConst e = j["encoder"];
-  m.flag(c.encReverse, e["reverse"], false);
-  m.num(c.encStepsPerDetent, e["stepsPerDetent"], 1, 4, false, "Steps per detent");
+  m.flag(c.encReverse, e["reverse"], false, "encoder.reverse");
+  m.num(c.encStepsPerDetent, e["stepsPerDetent"], 1, 4, false, "encoder.stepsPerDetent");
 
   m.num(c.pollMs, j["pollMs"], 1000, 60000, false, "Інтервал опитування");
-  m.num(c.pressUnit, j["pressUnit"], 0, 1, false, "Pressure unit");
-  m.flag(c.dsDemo, j["dsDemo"], false);
-  m.flag(c.updAuto, j["updAuto"], false);
+  m.num(c.pressUnit, j["pressUnit"], 0, 1, false, "pressUnit");
+  m.flag(c.dsDemo, j["dsDemo"], false, "dsDemo");
+  m.flag(c.updAuto, j["updAuto"], false, "updAuto");
 
+  if (!j["ds"].isNull() && !j["ds"].is<JsonArrayConst>()) m.fail("ds", "очікується масив");
   JsonArrayConst ds = j["ds"];
   for (int i = 0; i < DS_COUNT && i < (int)ds.size(); i++) {
     JsonVariantConst s = ds[i];
     m.str(c.ds[i].name, sizeof(c.ds[i].name), s["name"], false, "Назва датчика");
+    if (!s["addr"].isNull() && !s["addr"].is<const char*>()) m.fail("Адреса датчика", "очікується рядок");
+    if (!s["max"].isNull() && !s["max"].is<float>()) m.fail("Максимальна температура", "очікується число");
+    if (!s["offset"].isNull() && !s["offset"].is<float>()) m.fail("Поправка", "очікується число");
     if (s["addr"].is<const char*>()) {
       const char* a = s["addr"];
       if (!validAddr(a)) {

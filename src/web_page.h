@@ -65,6 +65,7 @@ details summary{cursor:pointer;margin-top:10px}
 .notes{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;white-space:pre-wrap;font:13px/1.4 system-ui,sans-serif}
 .bar{height:10px;background:var(--bd);border-radius:5px;overflow:hidden;margin:10px 0 4px}.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
 .fill{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin-top:8px}.fill i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444);background-size:100vw 100%}
+.barsel{margin-bottom:12px}#barPrev{border-radius:4px}
 #demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
@@ -120,6 +121,8 @@ details summary{cursor:pointer;margin-top:10px}
 
 <section id="t-ds" class="hide"><div class="card">
  <h3>Датчики DS18B20</h3>
+ <div class="barsel"><label>Вигляд індикатора заповнення на дисплеї</label>
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><select id="barStyle" style="max-width:260px"></select><canvas id="barPrev"></canvas><span class="mut">0 · 25 · 50 · 75 · 100 %</span></div></div>
  <label class="sw"><input type="checkbox" id="demo"><i></i>Демо-режим (емуляція 4 датчиків, поки справжні не підключені)</label>
  <table><thead><tr><th>#</th><th>Ім'я</th><th>Адреса на шині</th><th>Корекція, °C</th><th>Макс., °C</th><th>Сире → підсумок</th></tr></thead><tbody id="dsTbl"></tbody></table>
  <button class="btn sec" id="owScan">Сканувати шину</button><button class="btn" id="dsSave">Зберегти</button>
@@ -196,6 +199,17 @@ details summary{cursor:pointer;margin-top:10px}
 <script>
 const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// fill indicator styles — same as BAR_STYLES / barGlyph() in ui.cpp
+const BAR_STYLES=[['Трикутник',8,0],['Стовпчик на всю ширину',8,0],['Вузький стовпчик',8,0],['Рамка із заповненням',6,1],['Вузька шкала в рамці',6,1],['Термометр',5,1],['Сходинки',5,0]];
+let barStyleCur=5;
+function barRows(st,lv){const TW=[1,2,2,3,4,4,5,5],SH=[2,3,5,6,8],R=[];
+  for(let r=0;r<8;r++){const fb=7-r;let v=0;
+    if(st==0)v=fb<lv?(0x1F<<(5-TW[fb]))&0x1F:0;else if(st==1)v=fb<lv?0x1F:0;else if(st==2)v=fb<lv?0x0E:0;
+    else if(st==3)v=(r==0||r==7)?0x1F:((6-r)<lv?0x1F:0x11);else if(st==4)v=(r==0||r==7||(6-r)<lv)?0x0E:0x0A;
+    else if(st==6){for(let x=0;x<5;x++)if(x<lv&&fb<SH[x])v|=1<<(4-x)}
+    else v=r==0?0x0E:r<=5?((6-r)<=lv?0x0E:0x0A):r==6?0x1F:0x0E;
+    R.push(v)}return R}
+function rowsToHex(R){let h='';for(let x=0;x<5;x++){let c=0;for(let y=0;y<8;y++)if((R[y]>>(4-x))&1)c|=1<<y;h+=c.toString(16).padStart(2,'0')}return h}
 let C=null,I=null,S=null,owFound=[];
 const dirty=new Set();
 const PINS=[0,2,4,5,12,13,14,15,16,17,18,19,21,22,23,25,26,27,32,33,34,35,36,39];
@@ -243,7 +257,7 @@ async function loadCfg(){
   $('lcdCharset').value=C.lcd.charset;$('encSteps').value=C.encoder.stepsPerDetent;$('encRev').checked=C.encoder.reverse;
   $('ssid').value=C.wifi.ssid;$('hostname').value=C.wifi.hostname;$('apName').textContent=I.apSsid;
   $('wStat').innerHTML=I.staConnected?'<span class="ok">● Підключено до '+C.wifi.ssid+', IP '+I.ip+'</span>':(C.wifi.ssid?'<span class="bad">● Немає підключення до '+C.wifi.ssid+(I.staProblem?': '+I.staProblem:'')+'</span>':'Мережу не налаштовано');
-  $('demo').checked=C.dsDemo;$('poll').value=C.pollMs;$('punit').value=C.pressUnit;$('blMode').value=C.lcd.blMode;$('blMin').value=Math.max(1,Math.round(C.lcd.blTimeout/60));blUi();
+  $('demo').checked=C.dsDemo;$('barStyle').value=C.lcd.barStyle;barPreview();$('poll').value=C.pollMs;$('punit').value=C.pressUnit;$('blMode').value=C.lcd.blMode;$('blMin').value=Math.max(1,Math.round(C.lcd.blTimeout/60));blUi();
   ['wpass','appass'].forEach(id=>{$(id).value='';dirty.delete(id)});
   $('info').innerHTML=`Прошивка ${I.version} · MAC ${I.mac} · IP ${I.ip}<br>LCD: ${I.lcdAddr?'0x'+I.lcdAddr.toString(16):'не знайдено'} · BMP280: ${I.bmpAddr?'0x'+I.bmpAddr.toString(16):'не знайдено'} · RAM ${Math.round(I.freeHeap/1024)} КБ · аптайм ${Math.round(I.uptime_s/60)} хв`;
 }
@@ -259,6 +273,13 @@ async function poll(){
     updDsLive();
   }catch(e){$('st').textContent='немає зв\'язку з пристроєм'}}
 
+$('barStyle').innerHTML=BAR_STYLES.map((b,i)=>`<option value="${i}">${b[0]} (${b[1]} рівнів)</option>`).join('');
+// preview: the selected style at 0/25/50/75/100 %, drawn like the LCD (5x8 dots per cell)
+function barPreview(){const st=+$('barStyle').value,cv=$('barPrev'),p=3,cells=[0,.25,.5,.75,1].map(f=>{const lv=Math.round(f*BAR_STYLES[st][1]);return lv==0&&!BAR_STYLES[st][2]?null:barRows(st,lv)});
+  const W=(cells.length*7+1)*p,H=10*p,d=window.devicePixelRatio||1;cv.width=W*d;cv.height=H*d;cv.style.width=W+'px';cv.style.height=H+'px';
+  const g=cv.getContext('2d');g.scale(d,d);g.fillStyle='#1a44c8';g.fillRect(0,0,W,H);
+  cells.forEach((R,i)=>{for(let y=0;y<8;y++)for(let x=0;x<5;x++){const on=R&&((R[y]>>(4-x))&1);g.fillStyle=on?'#e9f0ff':'rgba(255,255,255,0.08)';g.fillRect((1+i*7+x)*p,(1+y)*p,p*.86,p*.86)}})}
+$('barStyle').onchange=()=>{barPreview();save({lcd:{barStyle:+$('barStyle').value}},'Вигляд індикатора змінено')};
 $('demo').onchange=e=>save({dsDemo:e.target.checked},e.target.checked?'Демо-режим увімкнено':'Демо-режим вимкнено');
 $('owScan').onclick=async()=>{try{owFound=(await api('/api/scan/onewire')).found;
   $('owRes').textContent=owFound.length?'Знайдено: '+owFound.map(x=>x.addr+(x.slot?` (T${x.slot})`:' (не призначено)')).join(', '):'Датчики не знайдено';renderDs()}catch(e){toast(e.message)}};
@@ -304,10 +325,8 @@ $('fwBtn').onclick=()=>{const f=$('fw').files[0];if(!f)return;const fd=new FormD
 
 const FONT='000000000000005F00000007000700147F147F14242A7F2A12231308646236495522500005030000001C2241000041221C0014083E081408083E080800503000000808080808006060000020100804023E5149453E00427F400042615149462141454B311814127F1027454545393C4A49493001710905033649494936064949291E003636000000563600000814224100141414141400412214080201510906324979413E7E1111117E7F494949363E414141227F4141221C7F494949417F090901013E414151327F0808087F00417F41002040413F017F081422417F404040407F0204027F7F0408107F3E4141413E7F090909063E4151215E7F09192946464949493101017F01013F4040403F1F2040201F7F2018207F631408146303047804036151494543007F41410002040810200041417F0004020102044040404040000102040020545454787F484444383844444420384444487F3854545418087E0901020C5252523E7F0804047800447D40002040443D007F1028440000417F40007C041804787C0804047838444444387C14141408081414187C7C080404084854545420043F4440203C4040207C1C2040201C3C4030403C44281028440C5050503C4464544C44000836410000007F000000413608000804081008',DEGG='0705070000';
 const CYR={'Б':'7F49494931','Г':'7F01010101','Ё':'7C55545544','Ж':'77087F0877','З':'2241494936','И':'7F1008047F','Й':'7C2111097C','Л':'403E01017F','П':'7F0101017F','У':'274848483F','Ф':'1C227F221C','Ч':'070808087F','Ш':'7F407F407F','Ъ':'017F484830','Ы':'7F4830007F','Э':'224149493E','Ю':'7F083E413E','Я':'462919097F','Д':'603E213F60','Ц':'3F20203F60','Щ':'3F203F207F','б':'3C4A4A4931','в':'7C54545428','г':'7C04040404','ё':'3855545518','ж':'6C107C106C','з':'4444545428','и':'7C2010087C','й':'7C2112097C','к':'7C10284400','л':'403804047C','м':'7C0810087C','н':'7C1010107C','п':'7C0404047C','т':'04047C0404','ч':'0C1010107C','ш':'7C407C407C','ъ':'047C505020','ы':'7C5050207C','ь':'7C50505020','э':'2844545438','ю':'7C10384438','я':'483414147C','д':'6038243C60','ф':'18247E2418','ц':'3C20203C60','щ':'3C203C207C','Є':'3E49494922','є':'3854544400','Ї':'00457C4500','ї':'00457C4100','Ґ':'7E02020203','ґ':'7C04040406'};
-// fill indicator: thermometer, bulb always filled, mercury level 0..5 in the tube (same as firmware)
-function barGlyph(lv){const R=[0b01110,0,0,0,0,0,0b11111,0b01110];for(let r=1;r<=5;r++)R[r]=(6-r)<=lv?0b01110:0b01010;
-  let h='';for(let x=0;x<5;x++){let c=0;for(let y=0;y<8;y++)if((R[y]>>(4-x))&1)c|=1<<y;h+=c.toString(16).padStart(2,'0')}return h}
-function glyph(ch){const c=ch.charCodeAt(0);if(c>=0x2581&&c<=0x2586)return barGlyph(c-0x2581);if(ch=='°')return DEGG;if(CYR[ch])return CYR[ch];if(c<32||c>126)return FONT.substr(('?'.charCodeAt(0)-32)*10,10);return FONT.substr((c-32)*10,10)}
+function barGlyph(lv){return rowsToHex(barRows(barStyleCur,lv))}
+function glyph(ch){const c=ch.charCodeAt(0);if(c>=0x2581&&c<=0x2589)return barGlyph(c-0x2581);if(ch=='°')return DEGG;if(CYR[ch])return CYR[ch];if(c<32||c>126)return FONT.substr(('?'.charCodeAt(0)-32)*10,10);return FONT.substr((c-32)*10,10)}
 // HD44780-like dot matrix: 5x8 dots per cell, 1-dot gaps, unlit dots faintly visible
 function drawLcd(cv,lines,cols,rows,on){
   const box=cv.closest('.card').clientWidth-60, pitch=Math.max(2,Math.min(6,Math.floor(box/(cols*6+1))));
@@ -323,7 +342,7 @@ function drawLcd(cv,lines,cols,rows,on){
           g.shadowBlur=l&&on?pitch:0;g.fillStyle=l?lit:off;g.fillRect(px,py,dot,dot)}}}}
   cv.setAttribute('aria-label',lines.join('\n'))}
 let lastLcd=null;
-function renderLcd(j){lastLcd=j;const cv=$('lcd');cv.parentElement.style.background=j.present?'#1a44c8':'#2b3550';
+function renderLcd(j){lastLcd=j;if(j.barStyle!=null)barStyleCur=j.barStyle;const cv=$('lcd');cv.parentElement.style.background=j.present?'#1a44c8':'#2b3550';
   const bl=j.backlight!==false;cv.parentElement.style.background=bl?'#1a44c8':'#0d1d55';drawLcd(cv,j.lines,j.cols,j.rows,bl);
   $('lcdInfo').textContent=`${j.cols}×${j.rows}`+(j.present?'':' · фізичний дисплей не знайдено, показано емулятор')+(bl?(j.blOffIn!=null?` · підсвітка вимкнеться через ${Math.floor(j.blOffIn/60)}:${String(j.blOffIn%60).padStart(2,'0')}`:''):' · підсвітка вимкнена')}
 window.addEventListener('resize',()=>lastLcd&&renderLcd(lastLcd));
