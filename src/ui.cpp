@@ -513,9 +513,10 @@ static void drawPageDs() {
   }
   char l[41], a[12], b[12];
   if (big()) {
-    // "1 Name     22.1°C ▅D" — name, value at a fixed column, space, fill indicator,
-    // last column reserved for the demo marker.
-    int nameW = max(0, (int)cfg.lcdCols - 2 - 7 - 3);
+    // "1 Name      22.1°C ▅" — name, value at a fixed column, space, fill indicator.
+    // In demo mode the last column holds the 'D' marker, so everything moves one
+    // column left: "1 Name     22.1°C ▅D".
+    int nameW = max(0, (int)cfg.lcdCols - 2 - 7 - 2 - (cfg.dsDemo ? 1 : 0));
     for (int i = 0; i < DS_COUNT; i++) {
       float t = dsTemp(i);
       if (!isnan(t)) snprintf(a, sizeof(a), "%5.1f%cC", t, DEG);
