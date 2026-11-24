@@ -39,6 +39,7 @@ void configDefaults(Config& c) {
     snprintf(c.ds[i].name, sizeof(c.ds[i].name), "T%d", i + 1);
     c.ds[i].addr[0] = 0;
     c.ds[i].offset = 0;
+    c.ds[i].maxTemp = 100;
   }
 }
 
@@ -117,6 +118,7 @@ void configToJson(const Config& c, JsonObject o, bool withSecrets) {
     s["name"] = c.ds[i].name;
     s["addr"] = c.ds[i].addr;
     s["offset"] = roundf(c.ds[i].offset * 100) / 100.0;
+    s["max"] = roundf(c.ds[i].maxTemp * 10) / 10.0;
   }
 }
 
@@ -210,6 +212,14 @@ String configFromJson(Config& c, JsonVariantConst j, bool& needReboot) {
       } else {
         strlcpy(c.ds[i].addr, a, sizeof(c.ds[i].addr));
         for (char* q = c.ds[i].addr; *q; q++) *q = toupper(*q);
+      }
+    }
+    if (s["max"].is<float>()) {
+      float mx = s["max"];
+      if (isnan(mx) || mx < 1 || mx > 999) {
+        if (m.err.isEmpty()) m.err = "Максимальна температура: від 1 до 999 °C";
+      } else {
+        c.ds[i].maxTemp = mx;
       }
     }
     if (s["offset"].is<float>()) {

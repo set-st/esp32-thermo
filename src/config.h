@@ -13,6 +13,7 @@ struct DsSlot {
   char name[64];  // UTF-8, up to ~30 Cyrillic chars
   char addr[17];   // 16 hex chars ROM code, "" = slot empty
   float offset;    // correction, °C
+  float maxTemp;   // 100 % of the LCD/admin fill indicator, °C
 };
 
 struct Config {

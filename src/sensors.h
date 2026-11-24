@@ -26,6 +26,8 @@ void sensorsLoop();
 
 // Corrected DS18B20 value (raw + offset). NAN if not available.
 float dsTemp(int slot);
+// Corrected value as a share of the slot's max temperature, clamped to 0..1. NAN if offline.
+float dsFill(int slot);
 
 // Fills arr with ROM codes of all DS18x20 sensors found on the bus.
 void sensorsScanOneWire(JsonArray arr);

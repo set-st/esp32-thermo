@@ -149,6 +149,101 @@ static void lcdText(char* out, size_t n, const char* in) {
   out[o] = 0;
 }
 
+// ---- CGRAM: Ukrainian letters + temperature fill indicators -------------------------
+// The LCD has 8 user-defined characters (slots 0..7). They are written as codes
+// 0x08..0x0F (aliases of slots 0..7) so that slot 0 never becomes a NUL byte.
+// In Cyrillic mode slots 1..6 hold Є є Ї ї Ґ ґ; every other slot is handed out per
+// frame to the fill levels that are visible right now.
+//
+// Fill indicator: a right triangle growing from the bottom-left corner,
+// 8 levels = 8 pixel rows; row widths from the bottom: 1,2,2,3,4,4,5,5 dots.
+static const uint8_t BAR_W[8] = {1, 2, 2, 3, 4, 4, 5, 5};
+static int8_t slotLevel[8] = {-1, -1, -1, -1, -1, -1, -1, -1};  // bar level held by a slot
+static int loadedCharset = -1;
+
+static void barGlyph(uint8_t level, uint8_t rows[8]) {
+  for (int r = 0; r < 8; r++) {  // r = 0 is the top pixel row
+    int fromBottom = 7 - r;
+    rows[r] = fromBottom < level ? (0x1F << (5 - BAR_W[fromBottom])) & 0x1F : 0;
+  }
+}
+
+static bool slotForBars(int s) { return !(cfg.lcdCharset == 1 && s >= 1 && s <= UKR_COUNT); }
+
+// (Re)load Ukrainian glyphs when the charset changes; forget bar slots.
+static void cgramSync() {
+  if (!lcd || loadedCharset == cfg.lcdCharset) return;
+  loadedCharset = cfg.lcdCharset;
+  for (int i = 0; i < 8; i++) slotLevel[i] = -1;
+  if (cfg.lcdCharset == 1)
+    cgramSync();
+}
+
+// levels[i] in 0..8 -> codes[i]: ' ' for 0, otherwise a CGRAM code showing that
+// level. If there are more distinct levels than free slots, close levels share one.
+static void barCodes(const uint8_t* levels, int n, char* codes) {
+  uint8_t want[8];
+  int nw = 0;
+  for (int i = 0; i < n; i++) {
+    bool seen = levels[i] == 0;
+    for (int k = 0; k < nw && !seen; k++) seen = want[k] == levels[i];
+    if (!seen) want[nw++] = levels[i];
+  }
+  for (int a = 1; a < nw; a++)  // sort ascending
+    for (int b = a; b > 0 && want[b - 1] > want[b]; b--) std::swap(want[b - 1], want[b]);
+
+  int slots[8], ns = 0;
+  for (int sl = 0; sl < 8; sl++)
+    if (slotForBars(sl)) slots[ns++] = sl;
+
+  uint8_t rep[8];
+  int nr = 0;
+  if (nw <= ns) {
+    for (int k = 0; k < nw; k++) rep[nr++] = want[k];
+  } else {
+    for (int k = 0; k < ns; k++) rep[nr++] = want[k * nw / ns];
+  }
+
+  // Keep slots that already show a needed level, then fill the rest.
+  int slotOf[9];
+  bool used[8] = {false};
+  for (int k = 0; k <= 8; k++) slotOf[k] = -1;
+  for (int k = 0; k < nr; k++)
+    for (int j = 0; j < ns; j++)
+      if (!used[slots[j]] && slotLevel[slots[j]] == rep[k]) {
+        slotOf[rep[k]] = slots[j];
+        used[slots[j]] = true;
+        break;
+      }
+  for (int k = 0; k < nr; k++) {
+    if (slotOf[rep[k]] >= 0) continue;
+    for (int j = 0; j < ns; j++) {
+      int sl = slots[j];
+      if (used[sl]) continue;
+      used[sl] = true;
+      slotOf[rep[k]] = sl;
+      if (slotLevel[sl] != rep[k]) {
+        uint8_t g[8];
+        barGlyph(rep[k], g);
+        if (lcd) lcd->createChar(sl, g);
+        slotLevel[sl] = rep[k];
+      }
+      break;
+    }
+  }
+
+  for (int i = 0; i < n; i++) {
+    if (levels[i] == 0 || nr == 0) {
+      codes[i] = ' ';
+      continue;
+    }
+    int best = rep[0];  // nearest available level
+    for (int k = 1; k < nr; k++)
+      if (abs(rep[k] - levels[i]) < abs(best - levels[i])) best = rep[k];
+    codes[i] = slotOf[best] >= 0 ? (char)(0x08 + slotOf[best]) : ' ';
+  }
+}
+
 // Reverse mapping for the web mirror: ROM byte -> UTF-8 ("" if unknown).
 static const char* romToUtf8(uint8_t b) {
   static char buf[4];
@@ -156,6 +251,16 @@ static const char* romToUtf8(uint8_t b) {
   if (b >= 0x20 && b < 0x7F) {
     buf[0] = b;
     buf[1] = 0;
+    return buf;
+  }
+  if (b >= 0x08 && b <= 0x0F) {  // CGRAM alias: fill indicator -> U+2581..U+2588 (▁..█)
+    int lv = slotLevel[b - 0x08];
+    if (lv < 1 || lv > 8) return " ";
+    uint32_t cp = 0x2580 + lv;
+    buf[0] = 0xE0 | (cp >> 12);
+    buf[1] = 0x80 | ((cp >> 6) & 0x3F);
+    buf[2] = 0x80 | (cp & 0x3F);
+    buf[3] = 0;
     return buf;
   }
   uint32_t ukr = (cfg.lcdCharset == 1 && b >= 1 && b <= UKR_COUNT) ? UKR[b - 1].cp : 0;
@@ -387,6 +492,15 @@ static void val5(char* out, size_t n, float v) {
 }
 
 static void drawPageDs() {
+  char bars[DS_COUNT];
+  if (big()) {
+    uint8_t levels[DS_COUNT];
+    for (int i = 0; i < DS_COUNT; i++) {
+      float f = dsFill(i);
+      levels[i] = isnan(f) ? 0 : (uint8_t)lroundf(f * 8);
+    }
+    barCodes(levels, DS_COUNT, bars);
+  }
   char l[41], a[12], b[12];
   if (big()) {
     // "1 Name      22.1°C D" — name column, value right-aligned at a fixed column,
@@ -398,7 +512,7 @@ static void drawPageDs() {
       else snprintf(a, sizeof(a), cfg.ds[i].addr[0] ? " --.-  " : "  ---  ");
       char name[41];
       marquee(name, sizeof(name), lcdName(i), nameW);
-      snprintf(l, sizeof(l), "%d %s%s", i + 1, name, a);
+      snprintf(l, sizeof(l), "%d %s%s%c", i + 1, name, a, bars[i]);
       putLine(i, l);
     }
     return;
@@ -605,6 +719,7 @@ static void drawUpdate(int p) {
 }
 
 static void draw() {
+  cgramSync();
   int up = inetUpdateProgress();
   if (up >= 0) {
     lastActivity = millis();  // keep the backlight on while updating

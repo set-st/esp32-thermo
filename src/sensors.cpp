@@ -193,6 +193,13 @@ void sensorsLoop() {
   }
 }
 
+float dsFill(int i) {
+  float t = dsTemp(i);
+  if (isnan(t)) return NAN;
+  float mx = cfg.ds[i].maxTemp > 0 ? cfg.ds[i].maxTemp : 100;
+  return constrain(t / mx, 0.0f, 1.0f);
+}
+
 float dsTemp(int i) {
   if (i < 0 || i >= DS_COUNT || !sens.ds[i].ok) return NAN;
   return sens.ds[i].raw + cfg.ds[i].offset;
@@ -273,12 +280,15 @@ void sensorsToJson(JsonObject o) {
     s["addr"] = cfg.ds[i].addr;
     s["ok"] = sens.ds[i].ok;
     s["offset"] = r2(cfg.ds[i].offset);
+    s["max"] = r2(cfg.ds[i].maxTemp);
     if (sens.ds[i].ok) {
       s["raw"] = r2(sens.ds[i].raw);
       s["temp"] = r2(dsTemp(i));
+      s["percent"] = roundf(dsFill(i) * 1000) / 10.0;
     } else {
       s["raw"] = nullptr;
       s["temp"] = nullptr;
+      s["percent"] = nullptr;
     }
   }
 

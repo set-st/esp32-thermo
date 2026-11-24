@@ -64,6 +64,7 @@ details summary{cursor:pointer;margin-top:10px}
 #updBar0{background:#2563eb1a;border:1px solid var(--acc);border-radius:12px;padding:10px 14px;margin-bottom:12px}
 .notes{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;white-space:pre-wrap;font:13px/1.4 system-ui,sans-serif}
 .bar{height:10px;background:var(--bd);border-radius:5px;overflow:hidden;margin:10px 0 4px}.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+.fill{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin-top:8px}.fill i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444);background-size:100vw 100%}
 #demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
 <header><b>ThermoHub</b><span id="st">…</span></header>
@@ -120,7 +121,7 @@ details summary{cursor:pointer;margin-top:10px}
 <section id="t-ds" class="hide"><div class="card">
  <h3>Датчики DS18B20</h3>
  <label class="sw"><input type="checkbox" id="demo"><i></i>Демо-режим (емуляція 4 датчиків, поки справжні не підключені)</label>
- <table><thead><tr><th>#</th><th>Ім'я</th><th>Адреса на шині</th><th>Корекція, °C</th><th>Сире → підсумок</th></tr></thead><tbody id="dsTbl"></tbody></table>
+ <table><thead><tr><th>#</th><th>Ім'я</th><th>Адреса на шині</th><th>Корекція, °C</th><th>Макс., °C</th><th>Сире → підсумок</th></tr></thead><tbody id="dsTbl"></tbody></table>
  <button class="btn sec" id="owScan">Сканувати шину</button><button class="btn" id="dsSave">Зберегти</button>
  <div class="mut" id="owRes"></div>
  <p class="mut">Нові датчики під час завантаження самі займають порожні слоти. Корекцію можна змінювати і з енкодера: довге натискання → вибір T1..T4 → клік → крутити → клік (зберегти).</p>
@@ -230,7 +231,7 @@ function renderDs(){
     let opt='<option value="">— порожньо —</option>';addrs.forEach(a=>opt+=`<option ${a==d.addr?'selected':''}>${a}</option>`);
     h+=`<tr><td>T${i+1}</td><td><input id="dn${i}" value="${d.name.replace(/"/g,'&quot;')}" maxlength="30"></td>
     <td><select id="da${i}">${opt}</select></td>
-    <td><input id="do${i}" type="number" step="0.1" min="-20" max="20" value="${d.offset}"></td><td id="dv${i}">—</td></tr>`});
+    <td><input id="do${i}" type="number" step="0.1" min="-20" max="20" value="${d.offset}"></td><td><input id="dm${i}" type="number" step="1" min="1" max="999" value="${d.max}" title="100% індикатора заповнення"></td><td id="dv${i}">—</td></tr>`});
   $('dsTbl').innerHTML=h;updDsLive()}
 function updDsLive(){if(!S||!C)return;S.ds18b20.forEach((d,i)=>{const e=$('dv'+i);if(e)e.textContent=d.ok?`${f1(d.raw)} → ${f1(d.temp)}`:'немає зв\'язку'})}
 
@@ -249,7 +250,7 @@ async function loadCfg(){
 
 async function poll(){
   try{S=await api('/api/sensors');
-    let h='';S.ds18b20.forEach(d=>h+=`<div class="card"><h3>${d.name}${d.demo?'<span class="badge">ДЕМО</span>':''}</h3><div class="big ${d.ok?'':'bad'}">${d.ok?f1(d.temp)+' °C':'немає зв\'язку'}</div><div class="mut">${d.demo?'емуляція':(d.addr||'слот порожній')}${d.offset?` · кор. ${d.offset>0?'+':''}${d.offset}`:''}</div></div>`);
+    let h='';S.ds18b20.forEach(d=>h+=`<div class="card"><h3>${d.name}${d.demo?'<span class="badge">ДЕМО</span>':''}</h3><div class="big ${d.ok?'':'bad'}">${d.ok?f1(d.temp)+' °C':'немає зв\'язку'}</div><div class="mut">${d.demo?'емуляція':(d.addr||'слот порожній')}${d.offset?` · кор. ${d.offset>0?'+':''}${d.offset}`:''}</div>${d.ok?`<div class="fill" title="${d.percent}% від макс. ${d.max} °C"><i style="width:${d.percent}%"></i></div><div class="mut">${Math.round(d.percent)}% від ${d.max} °C</div>`:''}</div>`);
     $('monDs').innerHTML=h;$('demoBar').classList.toggle('hide',!S.demo);
     const a=S.aht20,b=S.bmp280;
     $('ahtT').textContent=a.ok?f1(a.temp)+' °C':'немає даних';$('ahtH').textContent=a.ok?f1(a.humidity)+' %':'—';
@@ -262,7 +263,7 @@ $('demo').onchange=e=>save({dsDemo:e.target.checked},e.target.checked?'Демо-
 $('owScan').onclick=async()=>{try{owFound=(await api('/api/scan/onewire')).found;
   $('owRes').textContent=owFound.length?'Знайдено: '+owFound.map(x=>x.addr+(x.slot?` (T${x.slot})`:' (не призначено)')).join(', '):'Датчики не знайдено';renderDs()}catch(e){toast(e.message)}};
 $('dsSave').onclick=()=>{
-  const ds=C.ds.map((_,i)=>({name:$('dn'+i).value,addr:$('da'+i).value,offset:parseFloat($('do'+i).value)||0}));
+  const ds=C.ds.map((_,i)=>({name:$('dn'+i).value,addr:$('da'+i).value,offset:parseFloat($('do'+i).value)||0,max:parseFloat($('dm'+i).value)||100}));
   const used=ds.map(d=>d.addr).filter(Boolean);if(new Set(used).size!=used.length)return toast('Один датчик призначено у два слоти');
   save({ds})};
 $('i2cScan').onclick=async()=>{try{const r=await api('/api/scan/i2c'),f=r.found;
@@ -303,7 +304,10 @@ $('fwBtn').onclick=()=>{const f=$('fw').files[0];if(!f)return;const fd=new FormD
 
 const FONT='000000000000005F00000007000700147F147F14242A7F2A12231308646236495522500005030000001C2241000041221C0014083E081408083E080800503000000808080808006060000020100804023E5149453E00427F400042615149462141454B311814127F1027454545393C4A49493001710905033649494936064949291E003636000000563600000814224100141414141400412214080201510906324979413E7E1111117E7F494949363E414141227F4141221C7F494949417F090901013E414151327F0808087F00417F41002040413F017F081422417F404040407F0204027F7F0408107F3E4141413E7F090909063E4151215E7F09192946464949493101017F01013F4040403F1F2040201F7F2018207F631408146303047804036151494543007F41410002040810200041417F0004020102044040404040000102040020545454787F484444383844444420384444487F3854545418087E0901020C5252523E7F0804047800447D40002040443D007F1028440000417F40007C041804787C0804047838444444387C14141408081414187C7C080404084854545420043F4440203C4040207C1C2040201C3C4030403C44281028440C5050503C4464544C44000836410000007F000000413608000804081008',DEGG='0705070000';
 const CYR={'Б':'7F49494931','Г':'7F01010101','Ё':'7C55545544','Ж':'77087F0877','З':'2241494936','И':'7F1008047F','Й':'7C2111097C','Л':'403E01017F','П':'7F0101017F','У':'274848483F','Ф':'1C227F221C','Ч':'070808087F','Ш':'7F407F407F','Ъ':'017F484830','Ы':'7F4830007F','Э':'224149493E','Ю':'7F083E413E','Я':'462919097F','Д':'603E213F60','Ц':'3F20203F60','Щ':'3F203F207F','б':'3C4A4A4931','в':'7C54545428','г':'7C04040404','ё':'3855545518','ж':'6C107C106C','з':'4444545428','и':'7C2010087C','й':'7C2112097C','к':'7C10284400','л':'403804047C','м':'7C0810087C','н':'7C1010107C','п':'7C0404047C','т':'04047C0404','ч':'0C1010107C','ш':'7C407C407C','ъ':'047C505020','ы':'7C5050207C','ь':'7C50505020','э':'2844545438','ю':'7C10384438','я':'483414147C','д':'6038243C60','ф':'18247E2418','ц':'3C20203C60','щ':'3C203C207C','Є':'3E49494922','є':'3854544400','Ї':'00457C4500','ї':'00457C4100','Ґ':'7E02020203','ґ':'7C04040406'};
-function glyph(ch){const c=ch.charCodeAt(0);if(ch=='°')return DEGG;if(CYR[ch])return CYR[ch];if(c<32||c>126)return FONT.substr(('?'.charCodeAt(0)-32)*10,10);return FONT.substr((c-32)*10,10)}
+const BARW=[1,2,2,3,4,4,5,5];
+// fill indicator: right triangle from the bottom-left corner, level 1..8 = filled rows
+function barGlyph(lv){let h='';for(let x=0;x<5;x++){let c=0;for(let y=0;y<8;y++){const i=7-y;if(i<lv&&x<BARW[i])c|=1<<y}h+=c.toString(16).padStart(2,'0')}return h}
+function glyph(ch){const c=ch.charCodeAt(0);if(c>=0x2581&&c<=0x2588)return barGlyph(c-0x2580);if(ch=='°')return DEGG;if(CYR[ch])return CYR[ch];if(c<32||c>126)return FONT.substr(('?'.charCodeAt(0)-32)*10,10);return FONT.substr((c-32)*10,10)}
 // HD44780-like dot matrix: 5x8 dots per cell, 1-dot gaps, unlit dots faintly visible
 function drawLcd(cv,lines,cols,rows,on){
   const box=cv.closest('.card').clientWidth-60, pitch=Math.max(2,Math.min(6,Math.floor(box/(cols*6+1))));
@@ -315,7 +319,7 @@ function drawLcd(cv,lines,cols,rows,on){
   for(let r=0;r<rows;r++){const t=(lines[r]||'').padEnd(cols,' ');
     for(let c=0;c<cols;c++){const gl=glyph(t[c]);
       for(let x=0;x<5;x++){const col=parseInt(gl.substr(x*2,2),16);
-        for(let y=0;y<8;y++){const px=(c*6+1+x)*pitch, py=(r*9+1+y)*pitch, l=y<7&&(col>>y)&1;
+        for(let y=0;y<8;y++){const px=(c*6+1+x)*pitch, py=(r*9+1+y)*pitch, l=(col>>y)&1;
           g.shadowBlur=l&&on?pitch:0;g.fillStyle=l?lit:off;g.fillRect(px,py,dot,dot)}}}}
   cv.setAttribute('aria-label',lines.join('\n'))}
 let lastLcd=null;
