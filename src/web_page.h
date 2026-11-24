@@ -5,10 +5,17 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <html lang="uk"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ThermoHub</title>
+<script>/* apply the saved theme before first paint; ?theme=light|dark|auto sets and saves it */
+try{var q=new URLSearchParams(location.search).get('theme');
+if(q=='auto')localStorage.removeItem('thTheme');else if(q=='light'||q=='dark')localStorage.setItem('thTheme',q);
+var t=localStorage.getItem('thTheme');if(t=='light'||t=='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>
 :root{color-scheme:light dark;--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--mut:#6b7280;--acc:#2563eb;--link:#2563eb;--bad:#dc2626;--ok:#16a34a;--bd:#e5e7eb}
 a{color:var(--link)}
-@media(prefers-color-scheme:dark){:root{--bg:#111318;--card:#1b1e25;--fg:#e6e8ec;--mut:#9aa1ad;--bd:#2b2f38;--link:#93c5fd}}
+/* theme: "auto" follows the system; data-theme="light|dark" on <html> forces it */
+:root[data-theme=dark]{color-scheme:dark;--bg:#111318;--card:#1b1e25;--fg:#e6e8ec;--mut:#9aa1ad;--bd:#2b2f38;--link:#93c5fd}
+:root[data-theme=light]{color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#111318;--card:#1b1e25;--fg:#e6e8ec;--mut:#9aa1ad;--bd:#2b2f38;--link:#93c5fd}}
 *{box-sizing:border-box}body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
 header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);flex-wrap:wrap}
 header b{font-size:18px}#st{color:var(--mut);font-size:13px;margin-left:auto}
@@ -60,16 +67,19 @@ table.api td:last-child{width:1%;white-space:nowrap}
 .apibar{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px;color:var(--mut)}
 #apiPre{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin:6px 0 8px;max-height:420px;overflow:auto;font:12.5px/1.45 ui-monospace,Consolas,"Courier New",monospace;white-space:pre}
 .jk{color:#7c3aed}.js{color:#15803d}.jn{color:#c2410c}.jb{color:#2563eb}.jz{color:#9ca3af}
-@media(prefers-color-scheme:dark){.jk{color:#c4b5fd}.js{color:#86efac}.jn{color:#fdba74}.jb{color:#93c5fd}}
+:root[data-theme=dark] .jk{color:#c4b5fd}:root[data-theme=dark] .js{color:#86efac}:root[data-theme=dark] .jn{color:#fdba74}:root[data-theme=dark] .jb{color:#93c5fd}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .jk{color:#c4b5fd}:root:not([data-theme=light]) .js{color:#86efac}:root:not([data-theme=light]) .jn{color:#fdba74}:root:not([data-theme=light]) .jb{color:#93c5fd}}
 details summary{cursor:pointer;margin-top:10px}
 #updBar0{background:#2563eb1a;border:1px solid var(--acc);border-radius:12px;padding:10px 14px;margin-bottom:12px}
 .notes{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;max-height:200px;overflow:auto;white-space:pre-wrap;font:13px/1.4 system-ui,sans-serif}
 .bar{height:10px;background:var(--bd);border-radius:5px;overflow:hidden;margin:10px 0 4px}.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
 .fill{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin-top:8px}.fill i{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#eab308,#ef4444);background-size:100vw 100%}
 .barsel{margin-bottom:12px}#barPrev{border-radius:4px}
+.themebtn{border:1px solid var(--bd);background:none;color:var(--fg);border-radius:8px;width:34px;height:30px;cursor:pointer;font-size:16px;line-height:1;padding:0}
+.themebtn:hover{border-color:var(--acc)}
 #demoBar{background:#f59e0b22;border:1px solid #f59e0b;border-radius:12px;padding:10px 14px;margin-bottom:12px}
 </style></head><body>
-<header><b>ThermoHub</b><span id="st">…</span></header>
+<header><b>ThermoHub</b><span id="st">…</span><button id="themeBtn" type="button" class="themebtn"></button></header>
 <nav id="nav">
 <button data-t="mon" class="on">Моніторинг</button><button data-t="ds">Термодатчики</button>
 <button data-t="pins">Піни</button><button data-t="wifi">Wi‑Fi</button><button data-t="sys">Система</button>
@@ -202,6 +212,16 @@ details summary{cursor:pointer;margin-top:10px}
 <script>
 const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// theme: auto (system) -> light -> dark; remembered per browser (localStorage)
+const THEMES=[['auto','◐','Тема: як у системі'],['light','☀','Тема: світла'],['dark','☾','Тема: темна']];
+let theme=(()=>{try{return localStorage.getItem('thTheme')||'auto'}catch(e){return 'auto'}})();
+function applyTheme(){const d=document.documentElement,th=THEMES.find(x=>x[0]==theme)||THEMES[0];
+  if(th[0]=='auto')delete d.dataset.theme;else d.dataset.theme=th[0];
+  $('themeBtn').textContent=th[1];$('themeBtn').title=th[2]+' — натисніть, щоб змінити'}
+applyTheme();
+$('themeBtn').onclick=()=>{theme=THEMES[(THEMES.findIndex(x=>x[0]==theme)+1)%THEMES.length][0];
+  try{if(theme=='auto')localStorage.removeItem('thTheme');else localStorage.setItem('thTheme',theme)}catch(e){}
+  applyTheme();toast(THEMES.find(x=>x[0]==theme)[2])};
 // 93780 -> "1 д 2 год", 3900 -> "1 год 5 хв", 300 -> "5 хв"
 function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
   return d?`${d} д ${h} год`:h?`${h} год ${m} хв`:`${m} хв`}
